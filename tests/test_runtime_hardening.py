@@ -5,6 +5,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parents[1] / ".agents/skills/deep-research/scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
+from lib.research_design import template, validate_design
 from lib.rollout_audit import audit_rollout
 from lib.runtime_preflight import diagnose
 from lib.source_attempts import assess_response, build_attempt, may_attempt
@@ -40,6 +41,15 @@ def test_project_layout_is_rejected(tmp_path):
     result = diagnose(project_skill, workspace, home=tmp_path, python_version=(3, 11))
     assert not result["valid"]
     assert any(item["code"] == "skill_not_user_level" for item in result["checks"])
+
+
+def test_version_sensitive_design_requires_version_or_commit():
+    design = template("Codex config behavior")
+    design["questions"][0]["version_sensitive"] = True
+    result = validate_design(design)
+    assert not result["valid"]
+    design["questions"][0]["target_version"] = "0.146.0"
+    assert validate_design(design)["valid"]
 
 
 def valid_worker():
