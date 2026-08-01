@@ -9,6 +9,7 @@ from .citations import CITATION_RE
 
 HEADING_RE = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.MULTILINE)
 NUMBER_RE = re.compile(r"(?<![A-Za-z])(?:\d+(?:\.\d+)?%?|\$\d[\d,.]*)")
+TODO_RE = re.compile(r"TODO|待补充|待填写|待判定|pending", re.IGNORECASE)
 
 
 def load_rubric(path: Path) -> dict[str, Any]:
@@ -33,17 +34,23 @@ def material_paragraphs(text: str) -> list[str]:
     return paragraphs
 
 
+def has_frontmatter(text: str) -> bool:
+    return text.startswith("---\n") and text.find("\n---\n", 4) > 4
+
+
 def evaluate_report(report: Path, evidence: dict[str, dict[str, Any]], rubric: dict[str, Any]) -> dict[str, Any]:
     text = report.read_text(encoding="utf-8"); cited = list(dict.fromkeys(CITATION_RE.findall(text)))
     sections = section_map(text, rubric["section_aliases"]); required = rubric["sections"]["required"]
-    evidence_sections = ["executive", "findings", "conflict", "uncertainty"]
+    evidence_sections = ["executive", "findings", "conflict", "implications", "uncertainty", "claim_evidence"]
     paragraphs = material_paragraphs("\n\n".join(sections.get(key, "") for key in evidence_sections))
     numeric = [item for item in paragraphs if NUMBER_RE.search(item)]
     cited_paragraphs = [item for item in paragraphs if CITATION_RE.search(item)]; cited_numeric = [item for item in numeric if CITATION_RE.search(item)]
-    invalid = [item for item in cited if item not in evidence]
-    accepted = [evidence[item] for item in cited if item in evidence]
+    invalid = [item for item in cited if item not in evidence]; accepted = [evidence[item] for item in cited if item in evidence]
     groups = {card.get("independence_group") or card.get("source", {}).get("publisher") or card["id"] for card in accepted}
     high_risk = [card["id"] for card in accepted if card.get("prompt_injection_risk") == "high"]
+    minimum_chars = int(rubric["gates"].get("minimum_substantive_section_chars", 40))
+    substantive = [key for key in required if len(re.sub(r"\s+", " ", sections.get(key, "")).strip()) >= minimum_chars]
+    todo_markers = len(TODO_RE.findall(text)); frontmatter = has_frontmatter(text)
     metrics = {
         "required_sections": sum(1 for key in required if key in sections) / len(required),
         "citation_coverage": len(cited_paragraphs) / len(paragraphs) if paragraphs else 0.0,
@@ -53,7 +60,16 @@ def evaluate_report(report: Path, evidence: dict[str, dict[str, Any]], rubric: d
         "uncertainty_treatment": 1.0 if len(sections.get("uncertainty", "")) >= 60 else 0.0,
         "citation_validity": 1.0 if not invalid else 0.0,
     }
-    score = sum(metrics[key] * float(weight) for key, weight in rubric["weights"].items())
-    gates = rubric["gates"]
-    gate_results = {"minimum_score": score >= float(gates["minimum_score"]), "minimum_citation_coverage": metrics["citation_coverage"] >= float(gates["minimum_citation_coverage"]), "minimum_numeric_citation_coverage": metrics["numeric_citation_coverage"] >= float(gates["minimum_numeric_citation_coverage"]), "minimum_independence_groups": len(groups) >= int(gates["minimum_independence_groups"]), "maximum_invalid_citations": len(invalid) <= int(gates["maximum_invalid_citations"]), "maximum_high_risk_citations": len(high_risk) <= int(gates["maximum_high_risk_citations"])}
-    return {"report": str(report), "score": round(score, 4), "passes_all_gates": all(gate_results.values()), "gates": gate_results, "metrics": {key: round(value, 4) for key, value in metrics.items()}, "missing_sections": [key for key in required if key not in sections], "material_paragraphs": len(paragraphs), "numeric_paragraphs": len(numeric), "cited_evidence": cited, "invalid_citations": invalid, "independence_groups": len(groups), "high_risk_citations": high_risk, "limitations": ["Mechanical rubric only; it does not prove factual correctness, causal validity, or quote fidelity."]}
+    score = sum(metrics[key] * float(weight) for key, weight in rubric["weights"].items()); gates = rubric["gates"]
+    gate_results = {
+        "minimum_score": score >= float(gates["minimum_score"]),
+        "minimum_citation_coverage": metrics["citation_coverage"] >= float(gates["minimum_citation_coverage"]),
+        "minimum_numeric_citation_coverage": metrics["numeric_citation_coverage"] >= float(gates["minimum_numeric_citation_coverage"]),
+        "minimum_independence_groups": len(groups) >= int(gates["minimum_independence_groups"]),
+        "maximum_invalid_citations": len(invalid) <= int(gates["maximum_invalid_citations"]),
+        "maximum_high_risk_citations": len(high_risk) <= int(gates["maximum_high_risk_citations"]),
+        "maximum_todo_markers": todo_markers <= int(gates.get("maximum_todo_markers", 0)),
+        "substantive_required_sections": len(substantive) == len(required),
+        "yaml_frontmatter": frontmatter if gates.get("require_yaml_frontmatter", False) else True,
+    }
+    return {"report": str(report), "score": round(score, 4), "passes_all_gates": all(gate_results.values()), "gates": gate_results, "metrics": {key: round(value, 4) for key, value in metrics.items()}, "missing_sections": [key for key in required if key not in sections], "non_substantive_sections": [key for key in required if key not in substantive], "todo_markers": todo_markers, "yaml_frontmatter": frontmatter, "material_paragraphs": len(paragraphs), "numeric_paragraphs": len(numeric), "cited_evidence": cited, "invalid_citations": invalid, "independence_groups": len(groups), "high_risk_citations": high_risk, "limitations": ["Mechanical rubric only; it does not prove factual correctness, causal validity, or quote fidelity."]}

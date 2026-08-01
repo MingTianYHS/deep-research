@@ -13,7 +13,7 @@ A lightweight, citation-first deep-research Skill for OpenAI Codex.
 - atomic Evidence Cards and reviewed Claim–Evidence relations
 - one adversarial critic pass and one targeted gap wave
 - calibrated synthesis with conflict and uncertainty
-- structural citations, quote audits, and mechanical report-quality gates
+- Obsidian-native reports with structural, citation, and quality gates
 - Lite / Standard / Deep token budgets
 
 It intentionally has no scheduler, daemon, queue, vector database, or heavyweight agent framework.
@@ -50,6 +50,21 @@ For a topic named `AI短剧市场研究`, the default report names are:
 
 The date uses the host's local date. Internal IDs such as `q-001`, `ev-001`, and `claim-001` remain stable ASCII identifiers.
 
+## Report format and quality
+
+The Skill produces one Obsidian-native report format rather than maintaining separate standard and Obsidian renderers. This affects report presentation and final quality gates only; research design, agents, evidence, claims, budgets, and JSONL storage remain unchanged.
+
+Reports use:
+
+- YAML Properties for title, topic, status, dates, confidence, and tags
+- Chinese decision-oriented sections
+- Obsidian callouts for conclusion, decisive caveat, conflict, implications, uncertainty, high-value gaps, and quality disclosure
+- compact Claim–Evidence summaries and expandable claim cards
+- stable `[[ev-ID]]` citations understood by the existing verifier and audit
+- gates that reject missing or non-substantive sections, unfinished markers, invalid citations, weak citation coverage, insufficient independent origins, and high-risk citations
+
+No Dataview, Canvas, CSS snippet, or community plugin is required. Obsidian improves navigation and scanning but does not replace evidence review or make weak research pass.
+
 ## Quality-first flow
 
 ```bash
@@ -72,6 +87,6 @@ python "$ECTL" report-check ai短剧市场研究 --report report.md --require-ga
 
 ## Quality model
 
-The Skill checks source authority, directness, independence, specificity, freshness, question coverage, primary-source ratio, citation validity, material-paragraph citation coverage, quantitative citation coverage, conflict treatment, and uncertainty treatment. These are transparent review aids, not automatic truth scores.
+The Skill checks source authority, directness, independence, specificity, freshness, question coverage, primary-source ratio, citation validity, material-paragraph citation coverage, quantitative citation coverage, conflict treatment, uncertainty treatment, substantive report sections, and unfinished markers. These are transparent review aids, not automatic truth scores.
 
 The standard-library control plane owns deterministic validation and persistence. Codex owns planning, tool use, evidence interpretation, critique, and synthesis.
