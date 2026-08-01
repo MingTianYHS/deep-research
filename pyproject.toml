@@ -1,7 +1,7 @@
 [project]
 name = "codex-deep-research-skill"
-version = "0.6.0rc1"
-description = "Lightweight persistent deep-research skill for OpenAI Codex"
+version = "0.7.0rc1"
+description = "Lightweight citation-first deep-research skill for OpenAI Codex"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 
