@@ -1,5 +1,8 @@
 from pathlib import Path
+import json
+import math
 import sys
+import zipfile
 
 SCRIPT_DIR = Path(__file__).parents[1] / ".agents/skills/deep-research/scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -16,6 +19,11 @@ def test_cost_ledger_normalizes_and_summarizes(tmp_path):
     assert result["event_count"] == 2
     assert result["total_cost_usd"] == 0.035
     assert result["breakdown"]["exa:search"]["quantities"]["request"] == 5
+    try:
+        record(path, {"provider": "exa", "operation": "search", "quantity": math.nan, "unit": "request", "cost_usd": 0, "run_id": "run-1"})
+        assert False, "expected non-finite value rejection"
+    except ValueError:
+        pass
 
 
 def test_export_is_reproducible_and_verifiable(tmp_path):
@@ -24,7 +32,21 @@ def test_export_is_reproducible_and_verifiable(tmp_path):
     (topic / "state.json").write_text('{}\n', encoding="utf-8")
     (topic / "reports").mkdir(); (topic / "reports/report.md").write_text("Report\n", encoding="utf-8")
     (topic / "cache").mkdir(); (topic / "cache/ignored.txt").write_text("ignore", encoding="utf-8")
+    (topic / "manifest.json").write_text("workspace collision", encoding="utf-8")
     first, second = tmp_path / "one.zip", tmp_path / "two.zip"
     result_one = export_topic(topic, first); result_two = export_topic(topic, second)
     assert result_one["archive_sha256"] == result_two["archive_sha256"]
     assert verify_package(first)["valid"]
+
+
+def test_verify_rejects_unsafe_duplicate_members(tmp_path):
+    package = tmp_path / "unsafe.zip"
+    manifest = {"format": "deep-research-topic", "format_version": 1, "topic": "x", "files": []}
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("../escape", "one")
+        archive.writestr("../escape", "two")
+    result = verify_package(package)
+    assert not result["valid"]
+    assert any("unsafe archive" in error for error in result["errors"])
+    assert any("duplicate archive" in error for error in result["errors"])

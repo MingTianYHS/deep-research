@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -9,24 +10,33 @@ from .io_utils import append_jsonl, iter_jsonl, utc_now
 UNITS = {"request", "result", "page", "credit", "token", "browser_minute", "second", "other"}
 
 
+def required_text(event: dict[str, Any], key: str) -> str:
+    value = str(event.get(key, "")).strip()
+    if not value:
+        raise ValueError(f"cost event {key} must be non-empty")
+    return value
+
+
 def record(path: Path, event: dict[str, Any]) -> dict[str, Any]:
     required = ("provider", "operation", "quantity", "unit", "cost_usd", "run_id")
     missing = [key for key in required if event.get(key) is None]
     if missing:
         raise ValueError(f"cost event missing: {', '.join(missing)}")
     quantity, cost = float(event["quantity"]), float(event["cost_usd"])
+    if not math.isfinite(quantity) or not math.isfinite(cost):
+        raise ValueError("quantity and cost_usd must be finite")
     if quantity < 0 or cost < 0:
         raise ValueError("quantity and cost_usd must be non-negative")
     if event["unit"] not in UNITS:
         raise ValueError(f"unsupported cost unit: {event['unit']}")
     normalized = {
-        "provider": str(event["provider"]),
-        "operation": str(event["operation"]),
+        "provider": required_text(event, "provider"),
+        "operation": required_text(event, "operation"),
         "quantity": quantity,
         "unit": event["unit"],
         "cost_usd": cost,
         "estimated": bool(event.get("estimated", False)),
-        "run_id": str(event["run_id"]),
+        "run_id": required_text(event, "run_id"),
         "at": event.get("at") or utc_now(),
         "metadata": event.get("metadata") or {},
     }
@@ -50,10 +60,5 @@ def summarize(path: Path, run_id: str | None = None) -> dict[str, Any]:
         event_count += 1
     normalized = {}
     for key, bucket in totals.items():
-        normalized[key] = {
-            "cost_usd": round(bucket["cost_usd"], 8),
-            "events": bucket["events"],
-            "estimated_events": bucket["estimated_events"],
-            "quantities": {unit: value for unit, value in sorted(bucket["quantities"].items())},
-        }
+        normalized[key] = {"cost_usd": round(bucket["cost_usd"], 8), "events": bucket["events"], "estimated_events": bucket["estimated_events"], "quantities": {unit: value for unit, value in sorted(bucket["quantities"].items())}}
     return {"run_id": run_id, "event_count": event_count, "total_cost_usd": round(grand_total, 8), "breakdown": dict(sorted(normalized.items()))}
