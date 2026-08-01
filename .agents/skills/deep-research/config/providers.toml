@@ -1,0 +1,53 @@
+schema_version = 1
+
+# Manifests describe capabilities and accounting contracts. They do not contain secrets.
+[providers.native_web]
+kind = "host"
+enabled_by_default = true
+capabilities = ["web_search", "news_search", "fetch"]
+authentication = "host_managed"
+cost_reporting = "runtime_if_available"
+usage_units = ["request", "result", "page"]
+
+[providers.github_mcp]
+kind = "mcp"
+enabled_by_default = true
+capabilities = ["github_search", "repo_read", "issue_search", "pull_request_search", "commit_read"]
+authentication = "mcp_oauth_or_token"
+cost_reporting = "none"
+usage_units = ["request", "result"]
+
+[providers.exa]
+kind = "mcp_or_api"
+enabled_by_default = false
+capabilities = ["semantic_search", "web_search", "content_fetch"]
+authentication = "EXA_API_KEY_or_MCP"
+cost_reporting = "actual_or_estimated"
+usage_units = ["request", "result", "page", "credit"]
+pricing_source = "https://exa.ai/pricing"
+
+[providers.tavily]
+kind = "mcp_or_api"
+enabled_by_default = false
+capabilities = ["web_search", "news_search", "extract"]
+authentication = "TAVILY_API_KEY_or_MCP"
+cost_reporting = "actual_or_estimated"
+usage_units = ["request", "result", "page", "credit"]
+pricing_source = "https://docs.tavily.com/documentation/api-credits"
+
+[providers.firecrawl]
+kind = "mcp_or_api"
+enabled_by_default = false
+capabilities = ["search", "scrape", "crawl", "map"]
+authentication = "FIRECRAWL_API_KEY_or_MCP"
+cost_reporting = "actual_or_estimated"
+usage_units = ["request", "page", "credit", "browser_minute"]
+pricing_source = "https://www.firecrawl.dev/pricing"
+
+[providers.jina]
+kind = "http_or_api"
+enabled_by_default = true
+capabilities = ["fetch", "url_to_markdown"]
+authentication = "optional_JINA_API_KEY"
+cost_reporting = "actual_or_estimated"
+usage_units = ["request", "page", "token"]
