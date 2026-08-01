@@ -36,7 +36,9 @@ def material_paragraphs(text: str) -> list[str]:
 def evaluate_report(report: Path, evidence: dict[str, dict[str, Any]], rubric: dict[str, Any]) -> dict[str, Any]:
     text = report.read_text(encoding="utf-8"); cited = list(dict.fromkeys(CITATION_RE.findall(text)))
     sections = section_map(text, rubric["section_aliases"]); required = rubric["sections"]["required"]
-    paragraphs = material_paragraphs(text); numeric = [item for item in paragraphs if NUMBER_RE.search(item)]
+    evidence_sections = ["executive", "findings", "conflict", "uncertainty"]
+    paragraphs = material_paragraphs("\n\n".join(sections.get(key, "") for key in evidence_sections))
+    numeric = [item for item in paragraphs if NUMBER_RE.search(item)]
     cited_paragraphs = [item for item in paragraphs if CITATION_RE.search(item)]; cited_numeric = [item for item in numeric if CITATION_RE.search(item)]
     invalid = [item for item in cited if item not in evidence]
     accepted = [evidence[item] for item in cited if item in evidence]
@@ -53,12 +55,5 @@ def evaluate_report(report: Path, evidence: dict[str, dict[str, Any]], rubric: d
     }
     score = sum(metrics[key] * float(weight) for key, weight in rubric["weights"].items())
     gates = rubric["gates"]
-    gate_results = {
-        "minimum_score": score >= float(gates["minimum_score"]),
-        "minimum_citation_coverage": metrics["citation_coverage"] >= float(gates["minimum_citation_coverage"]),
-        "minimum_numeric_citation_coverage": metrics["numeric_citation_coverage"] >= float(gates["minimum_numeric_citation_coverage"]),
-        "minimum_independence_groups": len(groups) >= int(gates["minimum_independence_groups"]),
-        "maximum_invalid_citations": len(invalid) <= int(gates["maximum_invalid_citations"]),
-        "maximum_high_risk_citations": len(high_risk) <= int(gates["maximum_high_risk_citations"]),
-    }
+    gate_results = {"minimum_score": score >= float(gates["minimum_score"]), "minimum_citation_coverage": metrics["citation_coverage"] >= float(gates["minimum_citation_coverage"]), "minimum_numeric_citation_coverage": metrics["numeric_citation_coverage"] >= float(gates["minimum_numeric_citation_coverage"]), "minimum_independence_groups": len(groups) >= int(gates["minimum_independence_groups"]), "maximum_invalid_citations": len(invalid) <= int(gates["maximum_invalid_citations"]), "maximum_high_risk_citations": len(high_risk) <= int(gates["maximum_high_risk_citations"])}
     return {"report": str(report), "score": round(score, 4), "passes_all_gates": all(gate_results.values()), "gates": gate_results, "metrics": {key: round(value, 4) for key, value in metrics.items()}, "missing_sections": [key for key in required if key not in sections], "material_paragraphs": len(paragraphs), "numeric_paragraphs": len(numeric), "cited_evidence": cited, "invalid_citations": invalid, "independence_groups": len(groups), "high_risk_citations": high_risk, "limitations": ["Mechanical rubric only; it does not prove factual correctness, causal validity, or quote fidelity."]}

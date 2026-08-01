@@ -1,0 +1,9 @@
+{
+  "title": "Evaluate a product launch decision",
+  "decision_context": "Decide whether evidence supports a limited launch.",
+  "scope": {"include": ["official metrics", "independent analysis"], "exclude": ["anonymous speculation"], "time_window": "2026", "geographies": ["global"]},
+  "questions": [
+    {"id": "q-001", "question": "What outcomes are directly reported by primary sources?", "type": "fact", "decision_relevance": "Establish the factual baseline.", "dependencies": [], "overlap_key": "primary-outcomes", "preferred_source_types": ["official", "paper"], "acceptance_criteria": ["One primary source", "Dates and denominator preserved"], "disconfirming_query": "official correction retraction limitations", "alternative_explanations": [], "exclusions": []},
+    {"id": "q-002", "question": "Do independent sources materially weaken the reported outcomes?", "type": "comparison", "decision_relevance": "Test whether the baseline survives independent scrutiny.", "dependencies": ["q-001"], "overlap_key": "independent-critique", "preferred_source_types": ["paper", "news"], "acceptance_criteria": ["One independent origin", "Contradictions classified"], "disconfirming_query": "independent evidence confirms reported outcomes", "alternative_explanations": [], "exclusions": []}
+  ]
+}
