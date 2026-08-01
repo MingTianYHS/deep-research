@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Added
+
+- `DEEP_RESEARCH_WORKSPACE_ROOT` support for external topic workspaces, including Windows paths such as `D:\知识宇宙海\调研工作区`.
+- UTF-8 Chinese topic directory names with cross-platform filename sanitization.
+- Host-local `YYYYMMDD-主题.md` report naming, plus localized update and final suffixes.
+- Regression tests for external roots, Chinese names, Windows reserved names, and report filenames.
+
 ## 0.7.0rc1 - 2026-08-01
 
 ### Added

@@ -22,6 +22,12 @@ Codex coordinates a small number of isolated research workers. Standard-library 
 6. The coordinator is the only writer; workers, critic, and synthesizer are read-only.
 7. Respect budgets and stop when additional search has low decision value.
 
+## Workspace resolution
+
+Resolve the topic root from `DEEP_RESEARCH_WORKSPACE_ROOT` when set; otherwise use `<repo>/workspace/topics`. The configured root may be outside the repository, including `D:\知识宇宙海\调研工作区`. Do not copy private workspace content back into the repository unless explicitly requested.
+
+Chinese topic directory names are supported. Sanitize Windows-invalid characters and reserved names while keeping the human-readable title in `topic.toml`. Default reports use the host-local date and topic title: `YYYYMMDD-主题.md`, with `-更新` or `-最终` when applicable. Keep Question, Evidence, Claim, and Run IDs in stable ASCII form.
+
 ## Progressive references
 
 - research design and parallel boundaries: `references/RESEARCH_DESIGN.md`
