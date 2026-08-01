@@ -11,16 +11,17 @@ from lib.migrations import apply as apply_migration, inspect as inspect_workspac
 from lib.package_export import export_topic, verify_package
 from lib.providers import load as load_providers, validate as validate_providers, validate_usage
 from lib.release_check import check_repo
+from lib.workspace_paths import workspace_root
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = SKILL_DIR.parents[2]
-WORKSPACE_ROOT = REPO_ROOT / "workspace/topics"
+WORKSPACE_ROOT = workspace_root(REPO_ROOT)
 PROVIDERS_FILE = SKILL_DIR / "config/providers.toml"
 
 
 def topic_root(slug: str) -> Path:
     root = WORKSPACE_ROOT / slug
-    if not root.exists(): raise SystemExit(f"topic not found: {slug}")
+    if not root.exists(): raise SystemExit(f"topic not found: {slug} (workspace root: {WORKSPACE_ROOT})")
     return root
 
 
@@ -44,8 +45,7 @@ def cmd_cost_record(args):
     print(json.dumps(event, ensure_ascii=False, indent=2))
 
 
-def cmd_cost_summary(args):
-    print(json.dumps(summarize(topic_root(args.slug) / "logs/costs.jsonl", args.run_id), ensure_ascii=False, indent=2))
+def cmd_cost_summary(args): print(json.dumps(summarize(topic_root(args.slug) / "logs/costs.jsonl", args.run_id), ensure_ascii=False, indent=2))
 
 
 def cmd_workspace_check(args):
