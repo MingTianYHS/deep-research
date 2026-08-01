@@ -54,18 +54,20 @@ def evaluate(cards: list[dict[str, Any]], policy: dict[str, Any], as_of: date | 
             "freshness": freshness_score(source_type, source.get("published_at"), policy, as_of),
         }
         composite = sum(dimensions[key] * float(weights[key]) for key in weights)
-        details.append({"evidence_id": card["id"], "question_id": card.get("question_id"), "source_type": source_type, "dimensions": dimensions, "score": round(composite, 4)})
+        details.append({"evidence_id": card["id"], "question_id": card.get("question_id"), "source_type": source_type, "eligible": card.get("prompt_injection_risk") != "high", "dimensions": dimensions, "score": round(composite, 4)})
+    eligible = [item for item in details if item["eligible"]]
     primary = {"official", "paper", "policy", "financial"}
-    question_ids = {card.get("question_id") for card in cards if card.get("question_id")}
+    question_ids = {item.get("question_id") for item in eligible if item.get("question_id")}
     high_risk = [card["id"] for card in cards if card.get("prompt_injection_risk") == "high"]
     return {
         "card_count": len(cards),
-        "average_score": round(mean(item["score"] for item in details), 4) if details else 0.0,
-        "primary_source_ratio": round(sum(1 for item in details if item["source_type"] in primary) / len(details), 4) if details else 0.0,
-        "average_freshness": round(mean(item["dimensions"]["freshness"] for item in details), 4) if details else 0.0,
-        "independence_groups": len(groups),
+        "eligible_card_count": len(eligible),
+        "average_score": round(mean(item["score"] for item in eligible), 4) if eligible else 0.0,
+        "primary_source_ratio": round(sum(1 for item in eligible if item["source_type"] in primary) / len(eligible), 4) if eligible else 0.0,
+        "average_freshness": round(mean(item["dimensions"]["freshness"] for item in eligible), 4) if eligible else 0.0,
+        "independence_groups": len({card.get("independence_group") or card.get("source", {}).get("publisher") or card["id"] for card in cards if card.get("prompt_injection_risk") != "high"}),
         "questions_covered": len(question_ids),
-        "contradiction_cards": sum(1 for card in cards if card.get("stance") == "contradict"),
+        "contradiction_cards": sum(1 for card in cards if card.get("stance") == "contradict" and card.get("prompt_injection_risk") != "high"),
         "high_risk_cards": high_risk,
         "details": details,
     }
