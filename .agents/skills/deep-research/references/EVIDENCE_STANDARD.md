@@ -15,9 +15,9 @@ Each evidence card is one atomic proposition, not a page summary.
     "accessed_at": "2026-08-01T00:00:00Z",
     "source_type": "official"
   },
-  "statement": "One testable factual proposition.",
+  "statement": "One testable factual proposition with scope preserved.",
   "quote": "Exact source text.",
-  "locator": "section, line range, page, or timestamp",
+  "locator": "section, line range, page, table, or timestamp",
   "stance": "support",
   "relevance": "core",
   "confidence": 0.8,
@@ -27,10 +27,25 @@ Each evidence card is one atomic proposition, not a page summary.
 }
 ```
 
-Stance: `support`, `contradict`, `context`. Relevance: `core`, `supporting`, `background`.
+## Atomicity and entailment
 
-Assess authority, directness, topic-relative freshness, specificity, and independence separately. Multiple articles repeating one press release are one independence group.
+A card should be usable or rejectable as one unit. Preserve:
 
-Claims are versioned interpretations linked to evidence relations. Do not auto-change a core claim from supported to rejected; create a proposed transition for review.
+- observation/event date separately from publication/access date;
+- units, currency, denominator, population, geography, and sample size;
+- whether the source reports an observation, author interpretation, forecast, or recommendation;
+- uncertainty intervals and caveats that materially change meaning.
 
-Deduplicate by canonical URL, normalized full-content hash, title/publisher/date, then near-duplicate text. Embeddings are optional and unnecessary for v0.1.
+A quote that supports only half of a sentence cannot support the whole statement. Split the statement or add evidence.
+
+## Independence
+
+Multiple pages are not independent when they derive from one press release, filing, dataset, interview, paper, or syndicated article. Use that common origin as `independence_group`. Independent interpretation of the same dataset may add analytical diversity but not a second underlying observation.
+
+## Contradiction search
+
+For every core question, search at least one plausible disconfirming formulation. Preserve negative, null, and weakening evidence. Do not force conflicts into a false consensus; explain differences in population, date, method, or definition.
+
+Assess authority, directness, topic-relative freshness, specificity, and independence separately. Claims are versioned interpretations linked through support, contradict, and context relations. Core-claim status changes require review.
+
+Deduplicate by canonical URL, original-source cluster, normalized content hash, then title/publisher/date. Embeddings remain optional and unnecessary for this lightweight Skill.
