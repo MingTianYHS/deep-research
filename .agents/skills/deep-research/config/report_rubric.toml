@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 
 [weights]
 required_sections = 0.20
@@ -16,15 +16,21 @@ minimum_numeric_citation_coverage = 0.90
 minimum_independence_groups = 2
 maximum_invalid_citations = 0
 maximum_high_risk_citations = 0
+maximum_todo_markers = 0
+minimum_substantive_section_chars = 40
+require_yaml_frontmatter = true
 
 [sections]
-required = ["executive", "scope", "findings", "conflict", "uncertainty", "unresolved", "sources"]
+required = ["executive", "scope", "findings", "conflict", "implications", "uncertainty", "unresolved", "claim_evidence", "sources", "quality"]
 
 [section_aliases]
 executive = ["executive conclusion", "executive summary", "执行摘要", "核心结论"]
-scope = ["scope", "method", "范围", "方法"]
-findings = ["findings", "analysis", "supported findings", "分析", "主要发现"]
+scope = ["scope", "method", "范围", "方法", "调研范围与方法"]
+findings = ["findings", "analysis", "supported findings", "分析", "主要发现", "核心发现"]
 conflict = ["conflict", "contradict", "weakening", "冲突", "反方证据", "削弱性证据"]
+implications = ["implications", "recommendations", "启示", "建议", "决策启示与建议"]
 uncertainty = ["uncertainty", "limitations", "risk", "不确定性", "局限", "风险"]
 unresolved = ["unresolved", "next actions", "open questions", "未解决", "后续行动"]
+claim_evidence = ["claim-evidence", "claim evidence", "核心主张与证据", "主张与证据"]
 sources = ["sources", "references", "来源", "参考资料"]
+quality = ["quality", "audit", "质量", "调研质量说明"]
