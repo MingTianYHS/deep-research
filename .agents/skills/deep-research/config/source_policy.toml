@@ -1,0 +1,37 @@
+# Scores prioritize review and search; they never replace human judgment.
+[weights]
+authority = 0.30
+directness = 0.25
+independence = 0.20
+specificity = 0.15
+freshness = 0.10
+
+[authority]
+official = 0.90
+paper = 0.85
+policy = 0.90
+financial = 0.90
+interview = 0.75
+news = 0.65
+blog = 0.50
+social = 0.35
+unknown = 0.25
+
+# Half-lives are question defaults, not universal truth. Topic config may override.
+[freshness_half_life_days]
+default = 90
+news = 7
+social = 3
+official = 180
+policy = 180
+financial = 90
+paper = 365
+interview = 180
+blog = 90
+unknown = 30
+
+[quality_gates]
+minimum_card_score = 0.40
+minimum_primary_source_ratio = 0.40
+minimum_question_coverage = 0.80
+maximum_high_risk_cards = 0

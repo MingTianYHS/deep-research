@@ -1,0 +1,4 @@
+{"type":"claim.created","claim_id":"cl-example-1","claim":{"id":"cl-example-1","text":"An official report was published in July 2026.","status":"draft","confidence":0.8,"is_core":true,"relations":[],"created_at":"2026-08-01T00:30:00Z","updated_at":"2026-08-01T00:30:00Z"},"at":"2026-08-01T00:30:00Z"}
+{"type":"claim.relation.added","claim_id":"cl-example-1","relation":{"evidence_id":"ev-example-1","stance":"support","strength":0.9},"at":"2026-08-01T00:35:00Z"}
+{"type":"claim.transition.proposed","claim_id":"cl-example-1","from":"draft","to":"supported","reason":"official source","at":"2026-08-01T00:40:00Z"}
+{"type":"claim.status.changed","claim_id":"cl-example-1","from":"draft","to":"supported","reason":"reviewed","at":"2026-08-01T00:45:00Z"}
