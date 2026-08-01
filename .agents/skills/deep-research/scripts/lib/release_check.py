@@ -5,7 +5,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-REQUIRED_SKILL_FILES = ["SKILL.md", "config/tools.toml", "config/budgets.toml", "config/providers.toml", "config/source_policy.toml", "config/report_rubric.toml", "scripts/researchctl.py", "scripts/qualityctl.py", "scripts/releasectl.py", "scripts/designctl.py", "scripts/evalctl.py", "scripts/lib/workspace_paths.py", "references/RESEARCH_DESIGN.md"]
+REQUIRED_SKILL_FILES = ["SKILL.md", "config/tools.toml", "config/budgets.toml", "config/providers.toml", "config/source_policy.toml", "config/report_rubric.toml", "scripts/researchctl.py", "scripts/qualityctl.py", "scripts/releasectl.py", "scripts/designctl.py", "scripts/evalctl.py", "scripts/runtimectl.py", "scripts/lib/workspace_paths.py", "scripts/lib/runtime_preflight.py", "scripts/lib/worker_contract.py", "scripts/lib/source_attempts.py", "scripts/lib/rollout_audit.py", "references/RESEARCH_DESIGN.md"]
+REQUIRED_AGENTS = ["topic-researcher.toml", "research-critic.toml", "research-synthesizer.toml"]
 SECRET_PATTERNS = [re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"), re.compile(r"(?i)authorization\s*:\s*bearer\s+[A-Za-z0-9._-]{12,}"), re.compile(r"(?i)(?:api[_-]?key|secret|token)\s*[=:]\s*['\"]?[A-Za-z0-9_-]{16,}")]
 
 
@@ -20,9 +21,11 @@ def skill_version(skill_md: str) -> str | None:
 
 
 def check_repo(repo_root: Path) -> dict[str, Any]:
-    errors, warnings = [], []; skill = repo_root / ".agents/skills/deep-research"
+    errors, warnings = [], []; skill = repo_root / ".agents/skills/deep-research"; agents = repo_root / ".codex/agents"
     for relative in REQUIRED_SKILL_FILES:
         if not (skill / relative).exists(): errors.append(f"missing required skill file: {relative}")
+    for name in REQUIRED_AGENTS:
+        if not (agents / name).exists(): errors.append(f"missing required agent file: {name}")
     skill_md = skill / "SKILL.md"; skill_text = ""
     if skill_md.exists():
         skill_text = skill_md.read_text(encoding="utf-8")
@@ -35,7 +38,7 @@ def check_repo(repo_root: Path) -> dict[str, Any]:
         try:
             with config.open("rb") as handle: tomllib.load(handle)
         except tomllib.TOMLDecodeError as exc: errors.append(f"invalid TOML {config.name}: {exc}")
-    for scan_root in (skill, repo_root / ".codex/agents"):
+    for scan_root in (skill, agents):
         if not scan_root.exists(): continue
         for path in scan_root.rglob("*"):
             if not path.is_file() or path.suffix not in {".md", ".py", ".toml", ".json", ".jsonl"}: continue
