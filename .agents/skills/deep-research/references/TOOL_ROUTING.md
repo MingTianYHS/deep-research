@@ -1,6 +1,6 @@
 # Tool routing
 
-Match required capabilities to enabled tools in `config/tools.toml`; do not bind the workflow to a vendor.
+Match required capabilities to enabled tools in `config/tools.toml`; do not bind the workflow to a vendor. Read `PROVIDERS.md` when enabling a provider or recording cost.
 
 | Need | Preferred | Fallback |
 |---|---|---|
@@ -14,3 +14,5 @@ Match required capabilities to enabled tools in `config/tools.toml`; do not bind
 Cost-aware fetch order: direct fetch → reader → managed scrape/crawl → browser.
 
 One worker owns one question, runs 2-4 queries, inspects 5-10 results per query, and fetches only 3-5 complementary pages. Stop after two low-yield queries. Retry transient failures once and use at most one fallback.
+
+For each paid operation, append a normalized cost event with `releasectl.py cost-record`. Preserve the provider's actual cost when available; otherwise mark the event `--estimated`. Never hard-code a pricing-page value into routing logic.
