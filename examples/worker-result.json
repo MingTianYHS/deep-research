@@ -1,0 +1,28 @@
+{
+  "question_id": "q-001",
+  "queries_run": [
+    "official AI market report 2026"
+  ],
+  "sources_considered": 3,
+  "evidence_cards": [
+    {
+      "source": {
+        "url": "https://example.com/report?utm_source=search",
+        "title": "Example official report",
+        "publisher": "Example Organization",
+        "published_at": "2026-07-01",
+        "source_type": "official"
+      },
+      "statement": "Example Organization published the report in July 2026.",
+      "quote": "Published July 2026.",
+      "locator": "Report header",
+      "stance": "support",
+      "relevance": "background",
+      "confidence": 0.95,
+      "independence_group": "example-organization",
+      "tags": ["example"]
+    }
+  ],
+  "gaps": [],
+  "suggested_followups": []
+}

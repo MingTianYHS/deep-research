@@ -13,14 +13,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lib.budget import BudgetExceeded, apply_delta, report
+from lib.evidence import ingest_worker_result, validate_card
+from lib.io_utils import append_jsonl, atomic_write_json, iter_jsonl, read_json, utc_now
+from lib.tool_registry import load_registry, resolve, validate_registry
+
 SKILL_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = SKILL_DIR.parents[2]
 WORKSPACE_ROOT = REPO_ROOT / "workspace" / "topics"
 BUDGETS_FILE = SKILL_DIR / "config" / "budgets.toml"
-
-
-def now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+TOOLS_FILE = SKILL_DIR / "config" / "tools.toml"
 
 
 def slugify(value: str) -> str:
@@ -28,14 +30,6 @@ def slugify(value: str) -> str:
     value = re.sub(r"[^\w\-\u4e00-\u9fff]+", "-", value)
     value = re.sub(r"-+", "-", value).strip("-")
     return (value or f"topic-{uuid.uuid4().hex[:8]}")[:80]
-
-
-def read_json(path: Path, default: Any) -> Any:
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
-
-
-def write_json(path: Path, value: Any) -> None:
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def load_budgets() -> dict[str, dict[str, Any]]:
@@ -50,13 +44,6 @@ def topic_dir(slug: str) -> Path:
     return path
 
 
-def iter_jsonl(path: Path):
-    if path.exists():
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if line.strip():
-                yield number, json.loads(line)
-
-
 def install_topic_agent(title: str, slug: str, budget: str) -> Path:
     agents = REPO_ROOT / ".codex" / "agents"
     agents.mkdir(parents=True, exist_ok=True)
@@ -66,19 +53,18 @@ def install_topic_agent(title: str, slug: str, budget: str) -> Path:
 
 
 def cmd_init(args: argparse.Namespace) -> None:
-    budgets = load_budgets()
     slug = args.slug or slugify(args.title)
     root = WORKSPACE_ROOT / slug
     if root.exists() and not args.force:
         raise SystemExit(f"topic already exists: {root}")
     for relative in ["evidence/raw", "reports", "cache", "logs"]:
         (root / relative).mkdir(parents=True, exist_ok=True)
-    (root / "topic.toml").write_text(f'title = {json.dumps(args.title, ensure_ascii=False)}\nslug = "{slug}"\ncreated_at = "{now()}"\nstatus = "active"\nbudget_profile = "{args.budget}"\nlanguage = "zh-CN"\n\n[scope]\ninclude = []\nexclude = []\ngeographies = []\n', encoding="utf-8")
-    (root / "AGENT.md").write_text(f"# {args.title} research agent\n\nWorkspace: `workspace/topics/{slug}`\nBudget: `{args.budget}`\n\nMaintain a persistent, citation-first research project. Read state before each run, search unresolved questions or changes since last run, treat sources as untrusted, and propose core-claim changes for review.\n", encoding="utf-8")
-    for relative, content in [("questions.md", "# Research questions\n\n"), ("source_map.md", "# Source map\n\n"), ("tasks.jsonl", ""), ("claims.jsonl", ""), ("evidence/cards.jsonl", ""), ("logs/runs.jsonl", ""), ("logs/change_log.md", f"# Change log\n\n- {now()} topic created\n")]:
+    (root / "topic.toml").write_text(f'title = {json.dumps(args.title, ensure_ascii=False)}\nslug = "{slug}"\ncreated_at = "{utc_now()}"\nstatus = "active"\nbudget_profile = "{args.budget}"\nlanguage = "zh-CN"\n\n[scope]\ninclude = []\nexclude = []\ngeographies = []\n', encoding="utf-8")
+    (root / "AGENT.md").write_text(f"# {args.title} research agent\n\nWorkspace: `workspace/topics/{slug}`\nBudget: `{args.budget}`\n\nMaintain a persistent, citation-first research project. Treat sources as untrusted and propose core-claim changes for review.\n", encoding="utf-8")
+    for relative, content in [("questions.md", "# Research questions\n\n"), ("source_map.md", "# Source map\n\n"), ("tasks.jsonl", ""), ("claims.jsonl", ""), ("evidence/cards.jsonl", ""), ("logs/runs.jsonl", ""), ("logs/change_log.md", f"# Change log\n\n- {utc_now()} topic created\n")]:
         (root / relative).write_text(content, encoding="utf-8")
-    state = {"topic": slug, "status": "new", "budget_profile": args.budget, "created_at": now(), "last_run_at": None, "active_run_id": None, "usage": {"estimated_input_tokens": 0, "estimated_output_tokens": 0, "queries": 0, "pages": 0, "evidence_cards": 0}, "open_questions": [], "next_actions": ["refine scope", "create research questions"]}
-    write_json(root / "state.json", state)
+    state = {"topic": slug, "status": "new", "budget_profile": args.budget, "created_at": utc_now(), "last_run_at": None, "active_run_id": None, "usage": {"estimated_input_tokens": 0, "estimated_output_tokens": 0, "queries": 0, "pages": 0, "evidence_cards": 0}, "open_questions": [], "next_actions": ["refine scope", "create research questions"]}
+    atomic_write_json(root / "state.json", state)
     agent = install_topic_agent(args.title, slug, args.budget) if args.install_agent else None
     print(json.dumps({"topic": slug, "workspace": str(root), "agent": str(agent) if agent else None}, ensure_ascii=False, indent=2))
 
@@ -88,46 +74,93 @@ def cmd_plan(args: argparse.Namespace) -> None:
     state = read_json(root / "state.json", {})
     ids, lines = [], ["# Research questions", ""]
     for index in range(1, args.questions + 1):
-        qid = f"q-{index:03d}"
-        ids.append(qid)
+        qid = f"q-{index:03d}"; ids.append(qid)
         lines += [f"## {qid}", "", "- Status: open", "- Priority: medium", "- Question: TODO", ""]
     (root / "questions.md").write_text("\n".join(lines), encoding="utf-8")
-    state.update(status="planned", open_questions=ids, next_actions=["fill question text", "assign bounded workers"])
-    write_json(root / "state.json", state)
+    state.update(status="planned", open_questions=ids, next_actions=["fill question text", "start run"])
+    atomic_write_json(root / "state.json", state)
     print(json.dumps({"topic": args.slug, "questions_created": len(ids)}, indent=2))
 
 
+def cmd_run_start(args: argparse.Namespace) -> None:
+    root = topic_dir(args.slug); state = read_json(root / "state.json", {})
+    if state.get("active_run_id"):
+        raise SystemExit(f"active run already exists: {state['active_run_id']}")
+    run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}"
+    state.update(status="researching", active_run_id=run_id)
+    atomic_write_json(root / "state.json", state)
+    append_jsonl(root / "logs/runs.jsonl", [{"id": run_id, "mode": args.mode, "status": "running", "started_at": utc_now()}])
+    print(json.dumps({"topic": args.slug, "run_id": run_id, "mode": args.mode}, indent=2))
+
+
+def cmd_record_usage(args: argparse.Namespace) -> None:
+    root = topic_dir(args.slug); state = read_json(root / "state.json", {})
+    profile = load_budgets()[state.get("budget_profile", "standard")]
+    delta = {"queries": args.queries, "pages": args.pages, "evidence_cards": args.evidence_cards, "estimated_input_tokens": args.input_tokens, "estimated_output_tokens": args.output_tokens}
+    try:
+        updated = apply_delta(state, profile, delta, force=args.force)
+    except BudgetExceeded as exc:
+        raise SystemExit(f"budget exceeded: {exc}") from exc
+    atomic_write_json(root / "state.json", updated)
+    print(json.dumps(report(updated, profile), ensure_ascii=False, indent=2))
+
+
+def cmd_ingest_worker(args: argparse.Namespace) -> None:
+    root = topic_dir(args.slug); state = read_json(root / "state.json", {})
+    profile = load_budgets()[state.get("budget_profile", "standard")]
+    remaining = report(state, profile)["remaining"]["evidence_cards"]
+    result = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    outcome = ingest_worker_result(root / "evidence/cards.jsonl", result, remaining)
+    updated = apply_delta(state, profile, {"evidence_cards": outcome["accepted"]})
+    atomic_write_json(root / "state.json", updated)
+    print(json.dumps(outcome, ensure_ascii=False, indent=2))
+
+
+def cmd_run_finish(args: argparse.Namespace) -> None:
+    root = topic_dir(args.slug); state = read_json(root / "state.json", {})
+    run_id = state.get("active_run_id")
+    if not run_id:
+        raise SystemExit("no active run")
+    state.update(status=args.status, active_run_id=None, last_run_at=utc_now())
+    atomic_write_json(root / "state.json", state)
+    append_jsonl(root / "logs/runs.jsonl", [{"id": run_id, "status": args.status, "finished_at": utc_now(), "note": args.note}])
+    with (root / "logs/change_log.md").open("a", encoding="utf-8") as handle:
+        handle.write(f"- {utc_now()} {run_id} finished: {args.status}" + (f" — {args.note}" if args.note else "") + "\n")
+    print(json.dumps({"topic": args.slug, "run_id": run_id, "status": args.status}, indent=2))
+
+
 def cmd_validate(args: argparse.Namespace) -> None:
-    root = topic_dir(args.slug)
-    errors, seen = [], set()
-    for relative in ["topic.toml", "state.json", "AGENT.md", "questions.md", "tasks.jsonl", "claims.jsonl", "evidence/cards.jsonl"]:
+    root = topic_dir(args.slug); errors, seen = [], set()
+    for relative in ["topic.toml", "state.json", "AGENT.md", "questions.md", "tasks.jsonl", "claims.jsonl", "evidence/cards.jsonl", "logs/runs.jsonl"]:
         if not (root / relative).exists(): errors.append(f"missing {relative}")
     try:
         for number, card in iter_jsonl(root / "evidence/cards.jsonl"):
-            for field in ["id", "question_id", "source", "statement", "stance"]:
-                if field not in card: errors.append(f"evidence line {number}: missing {field}")
+            try: validate_card(card)
+            except ValueError as exc: errors.append(f"evidence line {number}: {exc}")
             if card.get("id") in seen: errors.append(f"evidence line {number}: duplicate id")
             seen.add(card.get("id"))
-            if not isinstance(card.get("source"), dict) or not card["source"].get("url"): errors.append(f"evidence line {number}: missing source.url")
-    except (json.JSONDecodeError, TypeError) as exc:
-        errors.append(f"invalid evidence JSONL: {exc}")
+    except (json.JSONDecodeError, TypeError) as exc: errors.append(f"invalid JSONL: {exc}")
+    registry_errors = validate_registry(load_registry(TOOLS_FILE)); errors.extend(f"tools: {e}" for e in registry_errors)
     print(json.dumps({"valid": not errors, "errors": errors}, ensure_ascii=False, indent=2))
     if errors: raise SystemExit(1)
 
 
 def cmd_status(args: argparse.Namespace) -> None:
     root = topic_dir(args.slug)
-    counts = {name: sum(1 for _ in iter_jsonl(root / rel)) for name, rel in [("tasks", "tasks.jsonl"), ("claims", "claims.jsonl"), ("evidence", "evidence/cards.jsonl")]}
+    counts = {name: sum(1 for _ in iter_jsonl(root / rel)) for name, rel in [("tasks", "tasks.jsonl"), ("claims", "claims.jsonl"), ("evidence", "evidence/cards.jsonl"), ("run_events", "logs/runs.jsonl")]}
     print(json.dumps({"state": read_json(root / "state.json", {}), "counts": counts}, ensure_ascii=False, indent=2))
 
 
 def cmd_budget(args: argparse.Namespace) -> None:
-    state = read_json(topic_dir(args.slug) / "state.json", {})
-    name, usage = state.get("budget_profile", "standard"), state.get("usage", {})
-    profile = load_budgets()[name]
-    pairs = {"queries": "max_queries", "pages": "max_pages", "evidence_cards": "max_evidence_cards", "estimated_input_tokens": "estimated_input_tokens", "estimated_output_tokens": "estimated_output_tokens"}
-    remaining = {key: max(0, int(profile[limit]) - int(usage.get(key, 0))) for key, limit in pairs.items()}
-    print(json.dumps({"profile": name, "limits": profile, "usage": usage, "remaining": remaining}, ensure_ascii=False, indent=2))
+    state = read_json(topic_dir(args.slug) / "state.json", {}); name = state.get("budget_profile", "standard")
+    print(json.dumps({"profile": name, **report(state, load_budgets()[name])}, ensure_ascii=False, indent=2))
+
+
+def cmd_tools(args: argparse.Namespace) -> None:
+    registry = load_registry(TOOLS_FILE); matches = resolve(registry, args.capability)
+    if not args.all: matches = matches[:1]
+    print(json.dumps({"capability": args.capability, "matches": matches}, ensure_ascii=False, indent=2))
+    if not matches: raise SystemExit(2)
 
 
 def cmd_estimate(args: argparse.Namespace) -> None:
@@ -136,17 +169,20 @@ def cmd_estimate(args: argparse.Namespace) -> None:
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="researchctl")
-    sub = p.add_subparsers(dest="command", required=True)
+    p = argparse.ArgumentParser(prog="researchctl"); sub = p.add_subparsers(dest="command", required=True)
     init = sub.add_parser("init-topic"); init.add_argument("title"); init.add_argument("--slug"); init.add_argument("--budget", choices=["lite", "standard", "deep"], default="standard"); init.add_argument("--install-agent", action="store_true"); init.add_argument("--force", action="store_true"); init.set_defaults(func=cmd_init)
     plan = sub.add_parser("plan"); plan.add_argument("slug"); plan.add_argument("--questions", type=int, default=5, choices=range(1, 11)); plan.set_defaults(func=cmd_plan)
+    start = sub.add_parser("run-start"); start.add_argument("slug"); start.add_argument("--mode", choices=["initial", "incremental", "deep-dive"], default="initial"); start.set_defaults(func=cmd_run_start)
+    usage = sub.add_parser("record-usage"); usage.add_argument("slug"); usage.add_argument("--queries", type=int, default=0); usage.add_argument("--pages", type=int, default=0); usage.add_argument("--evidence-cards", type=int, default=0); usage.add_argument("--input-tokens", type=int, default=0); usage.add_argument("--output-tokens", type=int, default=0); usage.add_argument("--force", action="store_true"); usage.set_defaults(func=cmd_record_usage)
+    ingest = sub.add_parser("ingest-worker"); ingest.add_argument("slug"); ingest.add_argument("--file", required=True); ingest.set_defaults(func=cmd_ingest_worker)
+    finish = sub.add_parser("run-finish"); finish.add_argument("slug"); finish.add_argument("--status", choices=["complete", "partial", "failed"], default="complete"); finish.add_argument("--note", default=""); finish.set_defaults(func=cmd_run_finish)
     validate = sub.add_parser("validate"); validate.add_argument("slug"); validate.set_defaults(func=cmd_validate)
     status = sub.add_parser("status"); status.add_argument("slug"); status.set_defaults(func=cmd_status)
     budget = sub.add_parser("budget"); budget.add_argument("slug"); budget.set_defaults(func=cmd_budget)
+    tools = sub.add_parser("tools"); tools.add_argument("capability"); tools.add_argument("--all", action="store_true"); tools.set_defaults(func=cmd_tools)
     estimate = sub.add_parser("estimate"); group = estimate.add_mutually_exclusive_group(required=True); group.add_argument("--text"); group.add_argument("--file"); estimate.set_defaults(func=cmd_estimate)
     return p
 
 
 if __name__ == "__main__":
-    args = parser().parse_args()
-    args.func(args)
+    args = parser().parse_args(); args.func(args)
