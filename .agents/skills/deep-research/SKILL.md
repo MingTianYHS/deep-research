@@ -4,13 +4,13 @@ description: Conduct persistent, citation-first deep research in Codex with boun
 license: MIT
 metadata:
   author: MingTianYHS
-  version: "0.1.0"
+  version: "0.6.0rc1"
 compatibility: OpenAI Codex with repository skills and subagents enabled; Python 3.11+; optional web-search or MCP tools.
 ---
 
 # Deep Research for Codex
 
-Codex is the coordinator, Codex subagents are isolated workers, and the bundled Python script manages deterministic topic state. Do not introduce a heavyweight orchestration framework.
+Codex is the coordinator, Codex subagents are isolated workers, and the bundled Python scripts manage deterministic topic state. Do not introduce a heavyweight orchestration framework.
 
 ## Mandatory rules
 
@@ -27,11 +27,13 @@ Codex is the coordinator, Codex subagents are isolated workers, and the bundled 
 Read only when required:
 
 - lifecycle and topic agent: `references/ARCHITECTURE.md`
-- search/fetch selection: `references/TOOL_ROUTING.md`
+- search/fetch selection and costs: `references/TOOL_ROUTING.md`, `references/PROVIDERS.md`
 - budgets and parallelism: `references/TOKEN_BUDGET.md`
 - evidence/claim contract: `references/EVIDENCE_STANDARD.md`
 - source safety: `references/SECURITY_POLICY.md`
 - report requirements: `references/REPORT_STANDARD.md`
+- workspace migration: `references/MIGRATIONS.md`
+- export and release: `references/EXPORT.md`, `references/RELEASE.md`
 
 ## Workflow
 
@@ -43,7 +45,7 @@ For a new topic:
 python .agents/skills/deep-research/scripts/researchctl.py init-topic "<title>" --budget standard --install-agent
 ```
 
-For an existing topic, read `topic.toml`, `state.json`, `questions.md`, `tasks.jsonl`, `claims.jsonl`, and the tail of `logs/change_log.md`. Ask no more than three clarifying questions when scope is materially ambiguous.
+For an existing topic, read `topic.toml`, `state.json`, `questions.md`, `tasks.jsonl`, `claims.jsonl`, and the tail of `logs/change_log.md`. Run `releasectl.py workspace-check <slug>` before resuming an archived or transferred workspace. Ask no more than three clarifying questions when scope is materially ambiguous.
 
 ### 2. Plan once
 
@@ -64,7 +66,7 @@ Read `references/TOKEN_BUDGET.md` before spawning workers.
 
 ### 4. Route tools
 
-Read `config/tools.toml`. Match required capability to an available host/MCP tool. Prefer search snippets before fetching pages; use direct/reader fetch before managed crawl; use a browser only for dynamic or authenticated pages. Use GitHub MCP for code, commits, issues, and PR evidence. Record fallbacks; never invent a tool call.
+Read `config/tools.toml` and `config/providers.toml`. Match required capability to an available host/MCP tool. Prefer search snippets before fetching pages; use direct/reader fetch before managed crawl; use a browser only for dynamic or authenticated pages. Use GitHub MCP for code, commits, issues, and PR evidence. Record paid operations as actual or estimated cost events; never invent a tool call or price.
 
 ### 5. Spawn bounded parallel researchers
 
@@ -100,7 +102,7 @@ Spawn at most one `research_critic` after the first wave. Give it compact cards 
 
 ### 8. Synthesize and update
 
-Use `research_synthesizer` or the coordinator. Separate supported conclusions, conflicting evidence, uncertainty, new information, and unresolved questions. Cite only accepted evidence cards. Update state and append the change log.
+Use `research_synthesizer` or the coordinator. Separate supported conclusions, conflicting evidence, uncertainty, new information, and unresolved questions. Cite only accepted evidence cards. Run structural citation checks, quality gates, and a report-bound quote audit before final delivery. Update state and append the change log.
 
 ## Failure and stopping
 
@@ -109,4 +111,4 @@ Use `research_synthesizer` or the coordinator. Separate supported conclusions, c
 - stop when fewer than 10% of estimated tokens remain;
 - stop when two waves add no material non-duplicate evidence;
 - preserve partial outputs and mark the run `partial`;
-- never publish, contact people, purchase, or expose secrets without explicit approval.
+- never publish, contact people, purchase, create a tag/release, or expose secrets without explicit approval.
