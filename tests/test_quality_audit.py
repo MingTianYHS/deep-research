@@ -18,28 +18,31 @@ def card(evidence_id="ev-1", source_type="official", published_at="2026-07-25"):
 
 def test_freshness_is_source_type_specific():
     policy = load_policy(POLICY)
-    news = freshness_score("news", "2026-07-25", policy, date(2026, 8, 1))
-    paper = freshness_score("paper", "2026-07-25", policy, date(2026, 8, 1))
-    assert paper > news
+    assert freshness_score("paper", "2026-07-25", policy, date(2026, 8, 1)) > freshness_score("news", "2026-07-25", policy, date(2026, 8, 1))
 
 
-def test_quality_report_is_transparent():
+def test_quality_report_is_transparent_and_bounded():
     result = evaluate([card()], load_policy(POLICY), date(2026, 8, 1))
-    assert result["card_count"] == 1
     assert result["primary_source_ratio"] == 1.0
     assert set(result["details"][0]["dimensions"]) == {"authority", "directness", "independence", "specificity", "freshness"}
+    invalid = card("ev-2"); invalid["quality"] = {"authority": 2.0}
+    try:
+        evaluate([invalid], load_policy(POLICY), date(2026, 8, 1))
+        assert False, "expected bounded quality dimension"
+    except ValueError:
+        pass
 
 
-def test_audit_requires_verifier_metadata(tmp_path):
+def test_audit_requires_metadata_and_unchanged_report(tmp_path):
     report = tmp_path / "report.md"; report.write_text("Fact [[ev-1]]", encoding="utf-8")
-    output = tmp_path / "audit.json"
-    create_audit(report, {"ev-1": card()}, output)
-    audit = __import__("json").loads(output.read_text())
-    audit["items"][0]["status"] = "verified"
+    output = tmp_path / "audit.json"; create_audit(report, {"ev-1": card()}, output)
+    audit = __import__("json").loads(output.read_text()); audit["items"][0]["status"] = "verified"
     atomic_write_json(output, audit)
-    result = validate_audit(output, require_all_verified=True)
-    assert not result["valid"]
-    audit["items"][0]["checked_at"] = "2026-08-01T00:00:00Z"
-    audit["items"][0]["checked_by"] = "codex/reviewer"
+    assert not validate_audit(output, require_all_verified=True)["valid"]
+    audit["items"][0]["checked_at"] = "2026-08-01T00:00:00Z"; audit["items"][0]["checked_by"] = "codex/reviewer"
     atomic_write_json(output, audit)
     assert validate_audit(output, require_all_verified=True)["valid"]
+    report.write_text("Changed [[ev-1]]", encoding="utf-8")
+    result = validate_audit(output, require_all_verified=True)
+    assert not result["valid"]
+    assert "report changed" in result["errors"][0]

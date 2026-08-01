@@ -14,6 +14,13 @@ def load_policy(path: Path) -> dict[str, Any]:
         return tomllib.load(handle)
 
 
+def bounded(value: Any) -> float:
+    number = float(value)
+    if not 0.0 <= number <= 1.0:
+        raise ValueError(f"quality dimension must be between 0 and 1: {number}")
+    return number
+
+
 def parse_date(value: str | None) -> date | None:
     if not value:
         return None
@@ -38,7 +45,8 @@ def freshness_score(source_type: str, published_at: str | None, policy: dict[str
 
 def evaluate(cards: list[dict[str, Any]], policy: dict[str, Any], as_of: date | None = None) -> dict[str, Any]:
     as_of = as_of or datetime.now(timezone.utc).date()
-    groups = Counter(card.get("independence_group") or card.get("source", {}).get("publisher") or card["id"] for card in cards)
+    eligible_cards = [card for card in cards if card.get("prompt_injection_risk") != "high"]
+    groups = Counter(card.get("independence_group") or card.get("source", {}).get("publisher") or card["id"] for card in eligible_cards)
     weights, authority_defaults = policy["weights"], policy["authority"]
     details = []
     for card in cards:
@@ -46,28 +54,29 @@ def evaluate(cards: list[dict[str, Any]], policy: dict[str, Any], as_of: date | 
         source_type = source.get("source_type", "unknown")
         declared = card.get("quality") or {}
         group = card.get("independence_group") or source.get("publisher") or card["id"]
+        eligible = card.get("prompt_injection_risk") != "high"
         dimensions = {
-            "authority": float(declared.get("authority", authority_defaults.get(source_type, authority_defaults["unknown"]))),
-            "directness": float(declared.get("directness", 0.6 if card.get("quote") else 0.4)),
-            "independence": 1.0 / groups[group],
-            "specificity": float(declared.get("specificity", 0.7 if card.get("locator") else 0.45)),
+            "authority": bounded(declared.get("authority", authority_defaults.get(source_type, authority_defaults["unknown"]))),
+            "directness": bounded(declared.get("directness", 0.6 if card.get("quote") else 0.4)),
+            "independence": 1.0 / groups[group] if eligible else 0.0,
+            "specificity": bounded(declared.get("specificity", 0.7 if card.get("locator") else 0.45)),
             "freshness": freshness_score(source_type, source.get("published_at"), policy, as_of),
         }
         composite = sum(dimensions[key] * float(weights[key]) for key in weights)
-        details.append({"evidence_id": card["id"], "question_id": card.get("question_id"), "source_type": source_type, "eligible": card.get("prompt_injection_risk") != "high", "dimensions": dimensions, "score": round(composite, 4)})
-    eligible = [item for item in details if item["eligible"]]
+        details.append({"evidence_id": card["id"], "question_id": card.get("question_id"), "source_type": source_type, "eligible": eligible, "dimensions": dimensions, "score": round(composite, 4)})
+    eligible_details = [item for item in details if item["eligible"]]
     primary = {"official", "paper", "policy", "financial"}
-    question_ids = {item.get("question_id") for item in eligible if item.get("question_id")}
+    question_ids = {item.get("question_id") for item in eligible_details if item.get("question_id")}
     high_risk = [card["id"] for card in cards if card.get("prompt_injection_risk") == "high"]
     return {
         "card_count": len(cards),
-        "eligible_card_count": len(eligible),
-        "average_score": round(mean(item["score"] for item in eligible), 4) if eligible else 0.0,
-        "primary_source_ratio": round(sum(1 for item in eligible if item["source_type"] in primary) / len(eligible), 4) if eligible else 0.0,
-        "average_freshness": round(mean(item["dimensions"]["freshness"] for item in eligible), 4) if eligible else 0.0,
-        "independence_groups": len({card.get("independence_group") or card.get("source", {}).get("publisher") or card["id"] for card in cards if card.get("prompt_injection_risk") != "high"}),
+        "eligible_card_count": len(eligible_details),
+        "average_score": round(mean(item["score"] for item in eligible_details), 4) if eligible_details else 0.0,
+        "primary_source_ratio": round(sum(1 for item in eligible_details if item["source_type"] in primary) / len(eligible_details), 4) if eligible_details else 0.0,
+        "average_freshness": round(mean(item["dimensions"]["freshness"] for item in eligible_details), 4) if eligible_details else 0.0,
+        "independence_groups": len(groups),
         "questions_covered": len(question_ids),
-        "contradiction_cards": sum(1 for card in cards if card.get("stance") == "contradict" and card.get("prompt_injection_risk") != "high"),
+        "contradiction_cards": sum(1 for card in eligible_cards if card.get("stance") == "contradict"),
         "high_risk_cards": high_risk,
         "details": details,
     }

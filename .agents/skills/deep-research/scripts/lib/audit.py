@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -9,8 +10,13 @@ from .io_utils import atomic_write_json, read_json, utc_now
 ALLOWED_STATUSES = {"pending", "verified", "failed", "unavailable"}
 
 
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def create_audit(report_path: Path, evidence: dict[str, dict[str, Any]], output: Path) -> dict[str, Any]:
-    cited = list(dict.fromkeys(CITATION_RE.findall(report_path.read_text(encoding="utf-8"))))
+    report_text = report_path.read_text(encoding="utf-8")
+    cited = list(dict.fromkeys(CITATION_RE.findall(report_text)))
     items = []
     for evidence_id in cited:
         card = evidence.get(evidence_id)
@@ -31,7 +37,7 @@ def create_audit(report_path: Path, evidence: dict[str, dict[str, Any]], output:
             "reason": "",
             "instructions": "Fetch the source with an available read-only tool, navigate to the locator, compare the expected quote and meaning, then set status to verified, failed, or unavailable.",
         })
-    audit = {"report": str(report_path), "created_at": utc_now(), "items": items}
+    audit = {"report": str(report_path), "report_sha256": file_sha256(report_path), "created_at": utc_now(), "items": items}
     atomic_write_json(output, audit)
     return audit
 
@@ -39,6 +45,11 @@ def create_audit(report_path: Path, evidence: dict[str, dict[str, Any]], output:
 def validate_audit(path: Path, require_all_verified: bool = False) -> dict[str, Any]:
     audit = read_json(path, {})
     errors, counts = [], {status: 0 for status in ALLOWED_STATUSES}
+    report = Path(audit.get("report", ""))
+    if not report.exists():
+        errors.append("audited report no longer exists")
+    elif audit.get("report_sha256") != file_sha256(report):
+        errors.append("report changed after audit creation; create a new audit")
     for index, item in enumerate(audit.get("items", []), 1):
         status = item.get("status")
         if status not in ALLOWED_STATUSES:
