@@ -1,0 +1,30 @@
+schema_version = 1
+
+[weights]
+required_sections = 0.20
+citation_coverage = 0.25
+numeric_citation_coverage = 0.15
+source_independence = 0.15
+conflict_treatment = 0.10
+uncertainty_treatment = 0.10
+citation_validity = 0.05
+
+[gates]
+minimum_score = 0.70
+minimum_citation_coverage = 0.80
+minimum_numeric_citation_coverage = 0.90
+minimum_independence_groups = 2
+maximum_invalid_citations = 0
+maximum_high_risk_citations = 0
+
+[sections]
+required = ["executive", "scope", "findings", "conflict", "uncertainty", "unresolved", "sources"]
+
+[section_aliases]
+executive = ["executive conclusion", "executive summary", "执行摘要", "核心结论"]
+scope = ["scope", "method", "范围", "方法"]
+findings = ["findings", "analysis", "supported findings", "分析", "主要发现"]
+conflict = ["conflict", "contradict", "weakening", "冲突", "反方证据", "削弱性证据"]
+uncertainty = ["uncertainty", "limitations", "risk", "不确定性", "局限", "风险"]
+unresolved = ["unresolved", "next actions", "open questions", "未解决", "后续行动"]
+sources = ["sources", "references", "来源", "参考资料"]
