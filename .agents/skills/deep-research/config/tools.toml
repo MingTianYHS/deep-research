@@ -1,0 +1,60 @@
+[defaults]
+search_order = ["native_web", "exa", "tavily"]
+fetch_order = ["direct_fetch", "jina", "firecrawl", "browser"]
+max_fallbacks = 1
+
+[tools.native_web]
+enabled = true
+kind = "host"
+capabilities = ["web_search", "news_search"]
+priority = 90
+cost_class = "low"
+
+[tools.direct_fetch]
+enabled = true
+kind = "host"
+capabilities = ["fetch", "static_page"]
+priority = 100
+cost_class = "low"
+
+[tools.github_mcp]
+enabled = true
+kind = "mcp"
+capabilities = ["github_search", "repo_read", "issue_search", "pull_request_search", "commit_read"]
+priority = 100
+cost_class = "low"
+
+[tools.exa]
+enabled = false
+kind = "mcp_or_api"
+capabilities = ["semantic_search", "web_search", "content_fetch"]
+priority = 85
+cost_class = "low"
+
+[tools.tavily]
+enabled = false
+kind = "mcp_or_api"
+capabilities = ["web_search", "news_search", "extract"]
+priority = 75
+cost_class = "medium"
+
+[tools.jina]
+enabled = true
+kind = "http"
+capabilities = ["fetch", "url_to_markdown"]
+priority = 70
+cost_class = "low"
+
+[tools.firecrawl]
+enabled = false
+kind = "mcp_or_api"
+capabilities = ["search", "scrape", "crawl", "map"]
+priority = 70
+cost_class = "medium"
+
+[tools.browser]
+enabled = true
+kind = "host_or_mcp"
+capabilities = ["dynamic_page", "authenticated_page", "interaction", "media"]
+priority = 30
+cost_class = "high"
