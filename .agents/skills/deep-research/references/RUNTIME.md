@@ -1,87 +1,45 @@
 # Runtime commands
 
-`researchctl.py` is the deterministic control plane. It does not call an LLM or search provider.
+`researchctl.py` is the deterministic control plane and does not call LLM/search providers.
 
-## Topic setup
+## Main lifecycle
 
 ```bash
 python scripts/researchctl.py init-topic "Topic" --budget standard --install-agent
 python scripts/researchctl.py plan topic --questions 5
-```
-
-`--install-agent` creates a project-scoped `.codex/agents/topic-<slug>.toml` read-only recurring researcher.
-
-## Run lifecycle
-
-```bash
 python scripts/researchctl.py run-start topic --mode initial
-python scripts/researchctl.py status topic
-python scripts/researchctl.py run-finish topic --status complete --note "summary"
+python scripts/researchctl.py ingest-worker topic --file worker-result.json
+python scripts/researchctl.py record-usage topic --queries 2 --pages 5 --input-tokens 8000 --output-tokens 1200
+python scripts/researchctl.py run-finish topic --status complete
 ```
 
-Only one active run is allowed per topic. Finish with `partial` when useful evidence exists but a tool, source, or budget prevented completion. Finish with `failed` only when no useful deliverable was produced.
+Only one active run is allowed. Use `partial` when useful evidence exists but a tool, source, or budget prevented completion.
 
-## Budget ledger
+## Claims and citations
+
+See `CLAIM_WORKFLOW.md`. Typical sequence:
 
 ```bash
-python scripts/researchctl.py budget topic
-python scripts/researchctl.py record-usage topic \
-  --queries 2 --pages 5 --input-tokens 8000 --output-tokens 1200
+python scripts/researchctl.py claim-create topic --text "Claim" --core
+python scripts/researchctl.py claim-link topic --claim cl-ID --evidence ev-ID --stance support --strength 0.8
+python scripts/researchctl.py claim-status topic --claim cl-ID --status supported --reason "reviewed" --approve-core
+python scripts/researchctl.py report-init topic --type initial
+python scripts/researchctl.py verify-citations topic --report workspace/topics/topic/reports/YYYYMMDD-initial.md
 ```
 
-Usage deltas are non-negative. A delta that crosses a hard profile limit is rejected before the atomic state update. `--force` is an explicit emergency override and must be noted in the run log.
+## Incremental research
 
-## Tool resolution
+```bash
+python scripts/researchctl.py incremental-plan topic
+```
+
+The generated plan uses `last_run_at`, open questions, contested/unresolved claims, pending core transitions, and known URLs. It instructs workers to exclude known sources unless verifying an update or contradiction.
+
+## Tool resolution and validation
 
 ```bash
 python scripts/researchctl.py tools web_search --all
-python scripts/researchctl.py tools repo_read
-```
-
-Resolution returns enabled tools ordered by priority. It does not imply the tool is connected in the current Codex session; the coordinator must verify actual availability before use.
-
-## Worker ingestion
-
-A worker output file follows this envelope:
-
-```json
-{
-  "question_id": "q-001",
-  "queries_run": ["example query"],
-  "sources_considered": 5,
-  "evidence_cards": [
-    {
-      "source": {
-        "url": "https://example.com/report",
-        "title": "Example report",
-        "publisher": "Example"
-      },
-      "statement": "One atomic factual proposition.",
-      "quote": "Exact source text.",
-      "locator": "Section 2",
-      "stance": "support",
-      "relevance": "core",
-      "confidence": 0.8,
-      "independence_group": "example-origin"
-    }
-  ],
-  "gaps": [],
-  "suggested_followups": []
-}
-```
-
-Ingest with:
-
-```bash
-python scripts/researchctl.py ingest-worker topic --file worker-result.json
-```
-
-The command canonicalizes URLs, removes tracking parameters, generates stable IDs, rejects invalid confidence/stance/URL values, deduplicates by canonical URL plus normalized statement, enforces the remaining evidence-card budget, appends accepted cards, and updates usage.
-
-## Validation
-
-```bash
 python scripts/researchctl.py validate topic
 ```
 
-Validation checks required workspace files, evidence records, duplicate IDs, URL/card fields, and the tool registry.
+Tool resolution is declarative and does not imply the provider is connected. Validation checks workspace files, evidence, claim events/relations, and tool registry configuration.
