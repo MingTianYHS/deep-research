@@ -15,17 +15,23 @@ def sample_card(evidence_id="ev-1"):
     return {"id": evidence_id, "question_id": "q-001", "source": {"url": "https://example.com", "canonical_url": "https://example.com"}, "statement": "Fact", "quote": "Exact quote", "stance": "support", "confidence": 0.8}
 
 
-def test_core_claim_requires_transition_approval(tmp_path):
+def test_core_claim_requires_two_step_approval(tmp_path):
     path = tmp_path / "claims.jsonl"
     claim = create(path, "Core claim", 0.7, True)
-    event = change_status(path, claim["id"], "supported", "evidence", False)
-    assert event["type"] == "claim.transition.proposed"
-    current = materialize(path)[claim["id"]]
-    assert current["status"] == "draft"
-    assert current["pending_transition"]["to"] == "supported"
+    try:
+        change_status(path, claim["id"], "supported", "direct", True)
+        assert False, "expected matching transition requirement"
+    except ValueError:
+        pass
+    proposal = change_status(path, claim["id"], "supported", "evidence", False)
+    assert proposal["type"] == "claim.transition.proposed"
+    assert materialize(path)[claim["id"]]["status"] == "draft"
+    approval = change_status(path, claim["id"], "supported", "reviewed", True)
+    assert approval["type"] == "claim.status.changed"
+    assert materialize(path)[claim["id"]]["status"] == "supported"
 
 
-def test_claim_link_and_approved_status(tmp_path):
+def test_claim_link_and_noncore_status(tmp_path):
     path = tmp_path / "claims.jsonl"
     claim = create(path, "Claim", 0.7, False)
     link(path, claim["id"], "ev-1", "support", 0.9)
@@ -44,8 +50,7 @@ def test_citation_verification(tmp_path):
 
 
 def test_incremental_plan_uses_state_claims_and_known_urls(tmp_path):
-    cards = tmp_path / "cards.jsonl"
-    append_jsonl(cards, [sample_card()])
+    cards = tmp_path / "cards.jsonl"; append_jsonl(cards, [sample_card()])
     plan = build_plan({"last_run_at": "2026-08-01T00:00:00Z", "open_questions": ["q-2"]}, {"cl-1": {"id": "cl-1", "status": "contested"}}, cards)
     assert plan["since"] == "2026-08-01T00:00:00Z"
     assert plan["priority_claims"] == ["cl-1"]
