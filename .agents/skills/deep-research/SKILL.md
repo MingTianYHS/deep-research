@@ -89,7 +89,7 @@ The Reflection updates generation, open questions, next actions, bounded context
 
 - Default search order is native web, Tavily, then Exa; select one provider per query instead of broadcasting the same query to all providers.
 - Use Tavily for current web/news and structured extraction, Exa for semantic discovery, and GitHub tools directly for software repositories. Use at most one provider fallback.
-- Known URLs follow direct fetch, Jina, web-access, Firecrawl, then browser. Firecrawl remains a quota-bounded dynamic-page or research-index fallback.
+- Known URLs follow direct fetch, Jina, Firecrawl, web-access, then browser. Firecrawl remains a quota-bounded dynamic-page or research-index fallback.
 - Search in a query ladder: broad discovery, authority-constrained `site:`, exact-title or identifier verification, original-document lookup, disconfirming search, and one material cross-language check.
 - Quotes, `filetype:`, exclusions, and `OR` are optional refinements rather than mandatory syntax. A PDF, ranking position, or index record does not establish authority.
 - The registry is free-quota-only: paid overage and automatic recharge are disabled. Quota exhaustion or HTTP 429 must fall back to another free route, never automatic multi-account or multi-key rotation.

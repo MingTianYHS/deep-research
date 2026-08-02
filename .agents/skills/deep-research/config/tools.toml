@@ -1,6 +1,6 @@
 [defaults]
 search_order = ["native_web", "tavily", "exa"]
-fetch_order = ["direct_fetch", "jina", "web_access", "firecrawl", "browser"]
+fetch_order = ["direct_fetch", "jina", "firecrawl", "web_access", "browser"]
 max_fallbacks = 1
 free_quota_only = true
 allow_paid_overage = false
