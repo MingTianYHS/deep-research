@@ -1,33 +1,17 @@
 # Tool routing
 
-Match required capabilities to enabled tools in `config/tools.toml`; do not bind the workflow to a vendor. Read `PROVIDERS.md` when enabling a provider or recording cost.
+Use the highest-authority available route and do not assume a declared provider is connected.
 
 | Need | Preferred | Fallback |
 |---|---|---|
-| OpenAI/Codex behavior | official docs MCP → version-pinned GitHub source | Context7 → Exa/web → browser/shell |
-| GitHub activity/code | GitHub MCP at requested tag/commit | public web search |
-| broad discovery | semantic/web search | news search |
-| current events | news search | time-filtered web search |
-| static official page | direct fetch | reader |
-| documentation site | direct docs/search | scrape/map, then crawl |
-| dynamic/login page | browser | mark inaccessible |
+| OpenAI/Codex behavior | official docs → version-pinned GitHub | Context7 → web |
+| GitHub code/activity | GitHub MCP at requested tag/commit | public web |
+| broad discovery | web/semantic search | news search |
+| static official page | direct fetch | Jina/reader |
+| authorized login/anti-bot/dynamic page | installed web-access Skill | host browser, otherwise unavailable |
 
-Cost-aware fetch order: direct source/MCP → reader → managed scrape/crawl → browser. Shell fetch is a last resort, not another automatic retry layer.
+Per Worker: 2-4 queries by default, one accepted URL fetch, one transient retry, one fallback, at most two attempts for one normalized URL, and at least 20% final-output reserve.
 
-## Per-worker routing contract
+A static 401/403/404/error page is unavailable. When web-access is installed, use it once in read-only research mode with the user's authorized session. Do not extract credentials or perform account-changing actions. Record failed static and accepted browser attempts separately; only the accepted attempt may back Evidence.
 
-- use the named `topic_researcher` for exactly one question;
-- run 2-4 search queries by default and never exceed the assigned profile limit;
-- inspect 5-10 results per query but fetch only complementary pages;
-- normalize a URL before access, reuse an accepted result, and fetch one source file once;
-- retry a transient failure once, then use one fallback;
-- stop a normalized URL after two failed attempts;
-- reject HTTP 4xx/5xx, error-page HTML, empty content, and known crawl timeout responses even when a process exits zero;
-- hash accepted content and mark mirrored copies as the same origin;
-- reserve at least 20% of the worker budget for its mandatory final JSON.
-
-## Version-aware evidence
-
-For software, API, schema, or configuration behavior, record the installed/requested version and prefer the matching release tag or commit. `main`-branch evidence may supplement but must be labeled `version_mismatch` when it cannot be tied to the target version.
-
-For each paid operation, append a normalized cost event with `releasectl.py cost-record`. Preserve the provider's actual cost when available; otherwise mark the event estimated. Never hard-code a pricing-page value into routing logic.
+For software/API/configuration behavior, record the target version and prefer its release tag/commit. Main-branch evidence is `mismatch` unless tied to the target version.
