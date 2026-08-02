@@ -1,7 +1,9 @@
 [defaults]
-search_order = ["native_web", "exa", "tavily"]
-fetch_order = ["direct_fetch", "jina", "web_access", "firecrawl", "browser"]
+search_order = ["native_web", "tavily", "exa"]
+fetch_order = ["direct_fetch", "jina", "firecrawl", "web_access", "browser"]
 max_fallbacks = 1
+free_quota_only = true
+allow_paid_overage = false
 
 [tools.native_web]
 enabled = true
@@ -32,14 +34,14 @@ priority = 95
 cost_class = "medium"
 
 [tools.exa]
-enabled = false
+enabled = true
 kind = "mcp_or_api"
 capabilities = ["semantic_search", "web_search", "content_fetch"]
 priority = 85
 cost_class = "low"
 
 [tools.tavily]
-enabled = false
+enabled = true
 kind = "mcp_or_api"
 capabilities = ["web_search", "news_search", "extract"]
 priority = 75
@@ -53,7 +55,7 @@ priority = 70
 cost_class = "low"
 
 [tools.firecrawl]
-enabled = false
+enabled = true
 kind = "mcp_or_api"
 capabilities = ["search", "scrape", "crawl", "map"]
 priority = 70
