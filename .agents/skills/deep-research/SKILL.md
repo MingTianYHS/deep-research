@@ -53,7 +53,7 @@ python ~/.agents/skills/deep-research/scripts/researchctl.py brief
 - `memory/lessons.jsonl` contains only Critic-validated reusable research strategies, not topic facts.
 - Reports are time-point outputs, not memory authority.
 
-Do not add a second Wiki, fact database, vector store, memory service, or per-topic Agent configuration.
+Do not add a second Wiki, fact database, vector store, memory service, query database, provider optimizer, or per-topic Agent configuration.
 
 ## Workflow
 
@@ -73,8 +73,8 @@ python ~/.agents/skills/deep-research/scripts/researchctl.py brief
 python ~/.agents/skills/deep-research/scripts/researchctl.py brief --question q-001
 ```
 
-5. Delegate one non-overlapping question per `topic_researcher`. Workers remain read-only and must return the complete Worker/Source Attempt/Evidence contract.
-6. Run `research_critic` after the evidence wave. It checks entailment, source independence, versions, contradictions, scope, and lesson candidates.
+5. Delegate one non-overlapping question per `topic_researcher`. Workers remain read-only and must return the complete Worker/Query/Source Attempt/Evidence contract.
+6. Run `research_critic` after the evidence wave. It checks worker and query integrity, entailment, source independence, versions, contradictions, scope, and lesson candidates.
 7. Use `research_synthesizer` only after Claim/Evidence review. It may not introduce new factual claims.
 8. The coordinator persists validated results, finishes the run, then applies a structured Critic-validated Reflection:
 
@@ -85,14 +85,27 @@ python ~/.agents/skills/deep-research/scripts/researchctl.py reflect --file refl
 
 The Reflection updates generation, open questions, next actions, bounded context, and deduplicated lessons. It does not silently change Claim status.
 
+## Query discipline
+
+Query discipline is a research behavior inside the Skill, not a separate search system.
+
+- Derive every query from the assigned Research Question, scope, time/version boundary, preferred source types, and acceptance criteria.
+- Give each query one explicit intent and use one provider per query; parallelize independent questions rather than duplicate paraphrases.
+- Permit at most one evidence-oriented low-yield strategy pivot. A second low-yield result stops that route and becomes an explicit Gap.
+- Execute at least one disconfirming query per Research Question and use reproducible date, version, commit, or data-vintage anchors when relevant.
+- Link discovery through Query → Source Attempt → Evidence. Search results, snippets, abstracts, and query logs are never Evidence by themselves.
+- Independently load citation-backtracked sources before creating Evidence Cards.
+- Record compact version-2 query events without hidden reasoning or full result pages.
+
+Follow `references/QUERY_CRAFT.md` for construction and stopping rules, and `references/TOOL_ROUTING.md` for provider selection and free-quota fallbacks.
+
 ## Free-quota search policy
 
 - Default search order is native web, Tavily, then Exa; select one provider per query instead of broadcasting the same query to all providers.
-- Use Tavily for current web/news and structured extraction, Exa for semantic discovery, and GitHub tools directly for software repositories. Use at most one provider fallback.
+- Use Tavily for current web/news and structured extraction, Exa for semantic discovery, and GitHub tools directly for software repositories. Use at most one strategy pivot.
 - Known URLs follow direct fetch, Jina, Firecrawl, web-access, then browser. Firecrawl remains a quota-bounded dynamic-page or research-index fallback.
-- Search in a query ladder: broad discovery, authority-constrained `site:`, exact-title or identifier verification, original-document lookup, disconfirming search, and one material cross-language check.
-- Quotes, `filetype:`, exclusions, and `OR` are optional refinements rather than mandatory syntax. A PDF, ranking position, or index record does not establish authority.
-- The registry is free-quota-only: paid overage and automatic recharge are disabled. Quota exhaustion or HTTP 429 must fall back to another free route, never automatic multi-account or multi-key rotation.
+- Quotes, `site:`, `filetype:`, exclusions, and `OR` are optional refinements rather than mandatory syntax. A PDF, ranking position, or index record does not establish authority.
+- The registry is free-quota-only: paid overage and automatic recharge are disabled. Quota exhaustion or HTTP 429 must pivot to another free route at most once, never automatic multi-account or multi-key rotation.
 - API keys remain in provider or host credential storage. Never save them in the repository, topic workspace, Source Attempts, or reports.
 
 ## Mandatory boundaries
@@ -105,8 +118,8 @@ The Reflection updates generation, open questions, next actions, bounded context
 6. Do not extract credentials, bypass authorization, or perform account-changing browser actions.
 7. Reserve at least 20% of every Worker budget for the final object.
 8. `ingest-worker` repeats strict validation and cannot be bypassed.
-9. `context.md`, Lessons, reports, and prior summaries are not evidence.
-10. Stop at acceptance criteria, hard limits, or two low-yield searches.
+9. `context.md`, Lessons, reports, prior summaries, and query traces are not evidence.
+10. Stop at acceptance criteria, hard limits, or the second low-yield result after one strategy pivot.
 
 ## Workspace format 2
 
