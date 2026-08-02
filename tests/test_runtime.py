@@ -34,7 +34,15 @@ def test_ingest_binds_provenance_is_idempotent_and_returns_budget(tmp_path):
     assert outcome["accepted"]==1 and outcome["duplicates"]==1
     assert outcome["budget_delta"]["queries"]==1
     stored=json.loads(path.read_text().splitlines()[0]); assert stored["content_sha256"]=="a"*64
-    again=ingest_worker_result(path,result,max_new=3); assert again["already_ingested"] and again["budget_delta"]=={}
+    again=ingest_worker_result(path,result,max_new=3); assert again["already_ingested"] and again["budget_delta"]["queries"]==1
+
+
+def test_ingest_recovers_identical_partial_source_attempt(tmp_path):
+    path=tmp_path/"topic/evidence/cards.jsonl"; path.parent.mkdir(parents=True); path.write_text("")
+    result=worker_result(); logs=tmp_path/"topic/logs"; logs.mkdir(parents=True)
+    (logs/"source_attempts.jsonl").write_text(json.dumps(result["source_attempts"][0])+"\n")
+    outcome=ingest_worker_result(path,result,3)
+    assert outcome["accepted"]==1 and Path(outcome["worker_result_log"]).exists()
 
 
 def test_ingest_rejects_mismatched_source_url(tmp_path):
