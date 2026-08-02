@@ -24,10 +24,6 @@ def _agent_check(path:Path,expected_name:str)->list[dict[str,Any]]:
  if missing:return [_item("error","agent_contract",f"Agent missing fields: {missing}",path)]
  if value.get("name")!=expected_name:return [_item("error","agent_name",f"Expected agent name {expected_name}, got {value.get('name')}",path)]
  if value.get("sandbox_mode")!="read-only":return [_item("error","agent_sandbox","Research agents must use read-only sandbox mode.",path)]
- instructions=value.get("developer_instructions","");required_terms=("run_id",)
- if expected_name=="topic_researcher":required_terms+=("estimated_input_tokens","source_attempt_id")
- for term in required_terms:
-  if term not in instructions:return [_item("error","agent_lifecycle_contract",f"Agent missing lifecycle contract term: {term}",path)]
  return [_item("ok","agent_file",f"Validated custom agent: {expected_name}",path)]
 def diagnose(skill_dir:Path,workspace_root:Path,*,home:Path|None=None,python_version:tuple[int,int]|None=None)->dict[str,Any]:
  skill_dir=skill_dir.expanduser().resolve();workspace_root=workspace_root.expanduser();expected_skill=expected_skill_dir(home).resolve();agents=expected_agent_dir(home);version=python_version or (sys.version_info.major,sys.version_info.minor);checks=[]
