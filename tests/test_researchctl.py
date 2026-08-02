@@ -1,9 +1,17 @@
 import importlib.util,json
 from pathlib import Path
+import pytest
 SCRIPT=Path(__file__).parents[1]/".agents/skills/deep-research/scripts/researchctl.py";spec=importlib.util.spec_from_file_location("researchctl",SCRIPT);module=importlib.util.module_from_spec(spec);assert spec.loader;spec.loader.exec_module(module)
 def test_slugify_ascii():assert module.slugify("AI Market Research")=="ai-market-research"
 def test_slugify_chinese():assert module.slugify("AI 短剧 行业")=="ai-短剧-行业"
 def test_budget_profiles_exist_and_question_limits_align():
     b=module.load_budgets();assert b["standard"]["max_workers"]<=5;assert b["deep"]["max_questions"]==8
-def test_init_stamps_workspace_version(monkeypatch,tmp_path):
-    monkeypatch.setattr(module,"WORKSPACE_ROOT",tmp_path);args=type("A",(),{"title":"主题","slug":"topic","budget":"lite","force":False,"install_agent":False})();module.cmd_init(args);state=json.loads((tmp_path/"topic/state.json").read_text());assert state["workspace_format_version"]==1;assert (tmp_path/"topic/logs/source_attempts.jsonl").exists()
+def init(module,tmp_path):
+    module.WORKSPACE_ROOT=tmp_path;args=type("A",(),{"title":"主题","slug":"topic","budget":"lite","force":False,"install_agent":False})();module.cmd_init(args);return tmp_path/"topic"
+def test_init_creates_topic_expert_workspace(monkeypatch,tmp_path):
+    root=init(module,tmp_path);state=json.loads((root/"state.json").read_text(encoding="utf-8"));assert state["workspace_format_version"]==2;assert not state["baseline_completed"];assert state["research_generation"]==0;assert state["context_generated_at"];assert (root/"AGENTS.md").exists();assert not (root/"AGENT.md").exists();assert (root/"context.md").exists();assert (root/"memory/lessons.jsonl").exists();monkeypatch.chdir(root);assert module.topic_dir()==root.resolve()
+def test_plan_uses_one_canonical_design_and_syncs_without_overwrite(tmp_path):
+    root=init(module,tmp_path);args=type("A",(),{"slug":"topic","questions":3,"force":False})();module.cmd_plan(args);path=root/"plans/current-design.json";design=json.loads(path.read_text(encoding="utf-8"));design["questions"][0]["question"]="edited question";path.write_text(json.dumps(design),encoding="utf-8");module.cmd_plan(args);synced=json.loads(path.read_text(encoding="utf-8"));state=json.loads((root/"state.json").read_text(encoding="utf-8"));assert synced["questions"][0]["question"]=="edited question";assert state["open_questions"]==["q-001","q-002","q-003"];assert "edited question" in (root/"questions.md").read_text(encoding="utf-8")
+def test_lite_plan_rejects_more_than_four_questions(tmp_path):
+    init(module,tmp_path);args=type("A",(),{"slug":"topic","questions":5,"force":False})();
+    with pytest.raises(SystemExit,match="allows 1-4"):module.cmd_plan(args)

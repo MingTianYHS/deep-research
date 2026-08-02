@@ -4,31 +4,39 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 0.9.0rc1 - 2026-08-02
+
+### Added
+
+- Codex-native persistent topic experts activated by workspace `AGENTS.md`.
+- Current-directory topic command resolution.
+- Canonical `plans/current-design.json` with generated `questions.md` and synchronized open-question state.
+- Baseline, incremental, and question-specific bounded Briefs.
+- Rebuildable `context.md` and Critic-validated reusable `memory/lessons.jsonl`.
+- Structured Reflection lifecycle and research-generation tracking.
+- Workspace format 2 migration.
+
+### Changed
+
+- The main Codex session is now explicitly the topic-expert coordinator; the three global custom agents remain fixed read-only execution roles.
+- Per-topic Agent TOML generation is deprecated and `--install-agent` no longer creates files.
+- Existing incremental-plan logic is reused as the foundation for topic context rather than adding a second planner.
+- Claim/Evidence remains the only topic fact authority; no Wiki, vector database, or memory middleware was added.
+
 ## 0.8.0rc1 - 2026-08-02
 
 ### Added
 
-- User-level runtime preflight that validates complete Skill files, Agent TOML contracts, read-only sandboxes, a real workspace write probe, and optional web-access installation.
-- Non-bypassable Worker ingestion with accepted Source Attempts, content hashes, complete Evidence Cards, preserved Worker payloads, and self-reported/observed budget disclosure.
-- Authorized web-access fallback for login, dynamic, and anti-bot pages without credential extraction or account-changing actions.
-- Topic mutation and JSONL file locks, explicit workspace format stamps, stricter Quote Audits, and zero-citation rejection.
-- Version-aware research, Rollout diagnostics, Chinese external workspaces, Obsidian-native reports, and Windows/Linux CI.
-
-### Changed
-
-- Deep profile question limit is consistently eight.
-- Worker limits now read from the canonical `budgets.toml` instead of duplicated constants.
-- Evidence may reference only an accepted Source Attempt.
-- Worker output reserve is at least 20 percent and is reported explicitly.
+- Strict Worker/Source Attempt/Evidence linkage, authorized web-access fallback, canonical budgets, locks, stronger Doctor and Quote Audit gates, and cross-platform CI.
 
 ## 0.7.0rc1 - 2026-08-01
 
 ### Added
 
-- Typed dependency-aware research design, source-origin clustering, adversarial critique, calibrated synthesis, report rubric, external workspaces, and bounded subagents.
+- Typed research design, origin clustering, adversarial critique, calibrated synthesis, and report rubric.
 
 ## 0.6.0rc1 - 2026-08-01
 
 ### Added
 
-- Codex-native Skill, persistent workspaces, Evidence/Claim model, citations, quality audits, provider/cost/export tools, migrations, CI, and smoke tests.
+- Codex-native Skill, persistent workspaces, Claim/Evidence, quality audits, migrations, exports, and CI.
