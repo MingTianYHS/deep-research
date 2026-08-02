@@ -30,7 +30,7 @@ max_duration_minutes_per_worker = 8
 
 [deep]
 max_workers = 8
-max_questions = 10
+max_questions = 8
 max_queries = 30
 max_pages = 60
 max_evidence_cards = 90
