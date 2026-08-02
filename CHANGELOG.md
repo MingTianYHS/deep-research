@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Added
+
+- Skill-level query discipline with explicit query intents, evidence-oriented low-yield pivots, compact query traces, and Query-to-Source Attempt lineage.
+
+### Changed
+
+- Free-quota provider routing now distinguishes query construction from tool selection and no longer uses result counts as a low-yield threshold.
+
 ## 0.9.0rc1 - 2026-08-02
 
 ### Added
