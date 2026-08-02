@@ -11,14 +11,13 @@ def create_audit(report_path:Path,evidence:dict[str,dict[str,Any]],output:Path)-
  for evidence_id in cited:
   card=evidence.get(evidence_id)
   if not card:items.append({"evidence_id":evidence_id,"status":"failed","reason":"missing evidence card"});continue
-  source=card.get("source") or {};expected_hash=card.get("content_sha256")
-  items.append({"evidence_id":evidence_id,"status":"pending","url":source.get("url"),"source_attempt_id":card.get("source_attempt_id"),"expected_content_sha256":expected_hash,"content_sha256":None,"statement":card.get("statement"),"expected_quote":card.get("quote"),"locator":card.get("locator"),"match_type":None,"checked_at":None,"checked_by":None,"observed_text":None,"reason":"","instructions":"Fetch with a read-only route, compare the observed text and locator, verify the accepted Source Attempt and exact content hash, then set status."})
- audit={"report":str(report_path),"report_sha256":file_sha256(report_path),"created_at":utc_now(),"citation_count":len(cited),"items":items};atomic_write_json(output,audit);return audit
+  source=card.get("source") or {};attempt_id=card.get("source_attempt_id");expected_hash=card.get("content_sha256")
+  items.append({"evidence_id":evidence_id,"status":"pending","url":source.get("url"),"expected_source_attempt_id":attempt_id,"source_attempt_id":attempt_id,"expected_content_sha256":expected_hash,"content_sha256":None,"statement":card.get("statement"),"expected_quote":card.get("quote"),"locator":card.get("locator"),"match_type":None,"checked_at":None,"checked_by":None,"observed_text":None,"reason":"","instructions":"Fetch with a read-only route, compare text and locator, verify the exact accepted Source Attempt and content hash, then set status."})
+ audit={"report":str(report_path.resolve()),"report_sha256":file_sha256(report_path),"created_at":utc_now(),"citation_count":len(cited),"items":items};atomic_write_json(output,audit);return audit
 def validate_audit(path:Path,require_all_verified:bool=False)->dict[str,Any]:
- audit=read_json(path,{});errors=[];counts={status:0 for status in ALLOWED_STATUSES};report=Path(audit.get("report",""));seen=set()
+ audit=read_json(path,{});errors=[];counts={status:0 for status in ALLOWED_STATUSES};report=Path(audit.get("report",""));seen=set();items=audit.get("items",[])
  if not report.exists():errors.append("audited report no longer exists")
  elif audit.get("report_sha256")!=file_sha256(report):errors.append("report changed after audit creation; create a new audit")
- items=audit.get("items",[])
  if audit.get("citation_count") is not None and audit.get("citation_count")!=len(items):errors.append("citation_count does not match audit items")
  for index,item in enumerate(items,1):
   evidence_id=item.get("evidence_id")
@@ -28,13 +27,12 @@ def validate_audit(path:Path,require_all_verified:bool=False)->dict[str,Any]:
   if status not in ALLOWED_STATUSES:errors.append(f"item {index}: invalid status {status}");continue
   counts[status]+=1
   if status=="verified":
-   for field in ("checked_at","checked_by","observed_text","source_attempt_id","content_sha256","match_type"):
+   for field in ("checked_at","checked_by","observed_text","source_attempt_id","content_sha256","match_type","expected_source_attempt_id","expected_content_sha256"):
     if not item.get(field):errors.append(f"item {index}: verified item requires {field}")
    if item.get("match_type") not in MATCH_TYPES:errors.append(f"item {index}: invalid match_type")
-   expected=item.get("expected_content_sha256")
-   if not expected:errors.append(f"item {index}: verified item requires expected_content_sha256")
-   elif item.get("content_sha256")!=expected:errors.append(f"item {index}: verified content hash does not match Evidence Card")
+   if item.get("source_attempt_id")!=item.get("expected_source_attempt_id"):errors.append(f"item {index}: verified source attempt does not match Evidence Card")
+   if item.get("content_sha256")!=item.get("expected_content_sha256"):errors.append(f"item {index}: verified content hash does not match Evidence Card")
   if status in {"failed","unavailable"} and not item.get("reason"):errors.append(f"item {index}: {status} item requires reason")
  if require_all_verified and any(counts[s] for s in ("pending","failed","unavailable")):errors.append("final audit requires every citation to be verified")
  if require_all_verified and not items:errors.append("final audit requires at least one citation")
- return {"audit":str(path),"counts":counts,"errors":errors,"valid":not errors}
+ return {"audit":str(path),"report":str(report),"counts":counts,"errors":errors,"valid":not errors}
