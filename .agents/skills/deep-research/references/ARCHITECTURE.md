@@ -1,44 +1,49 @@
 # Architecture
 
-## Runtime
-
-This skill uses Codex as orchestrator and avoids LangGraph, a queue, a vector database, and provider SDKs in the lightweight release.
-
-- `SKILL.md`: policy and workflow.
-- Codex custom agents: isolated parallel workers.
-- host/MCP tools: search and fetch.
-- `researchctl.py`: topic state, budgets, evidence, claims, reports, and run lifecycle.
-- `qualityctl.py`: quality gates and report-bound quote audits.
-- `releasectl.py`: provider manifests, normalized costs, deterministic exports, and release checks.
-- JSONL: append-only, inspectable events.
-
-## Workspace
+## Agent hierarchy
 
 ```text
-workspace/topics/{slug}/
-├── topic.toml
-├── state.json
-├── AGENT.md
-├── questions.md
-├── tasks.jsonl
-├── claims.jsonl
-├── source_map.md
-├── evidence/cards.jsonl
-├── evidence/raw/
-├── reports/
-├── plans/
-├── cache/
-└── logs/{runs.jsonl,costs.jsonl,change_log.md}
+Main Codex session in topic workspace (topic-expert coordinator)
+├── topic_researcher
+├── research_critic
+└── research_synthesizer
 ```
 
-## Boundary
+`AGENTS.md` activates the coordinator. The three user-level custom agents are fixed read-only execution roles. Per-topic Agent TOML files are deprecated because they duplicate the coordinator, drift from contracts, and do not provide learning.
 
-Workers search and return structured evidence but never write files. The coordinator owns scope, budget, deduplication, persistence, critique, and synthesis. External content remains untrusted data.
+## Authority layers
 
-## Topic-level agent
+```text
+Source Attempt → Evidence Card → Claim–Evidence → context/report views
+```
 
-Every topic gets `AGENT.md`. `init-topic --install-agent` additionally writes `.codex/agents/topic-<slug>.toml`, a read-only recurring researcher carrying only the mission, workspace path, and budget—not the complete evidence history.
+- `plans/current-design.json` is the canonical question design.
+- `questions.md` and `state.open_questions` are synchronized views.
+- `context.md` is bounded and rebuildable, never a fact store.
+- `memory/lessons.jsonl` stores only validated reusable research strategies.
+- Run logs remain raw events; Lessons are distilled future-facing experience.
 
-## Portability
+## Runtime
 
-Exports exclude raw evidence, caches, environment files, and symlinks by default. The manifest records size and SHA-256 for each packaged file. Provider credentials remain outside the workspace and are never part of a topic archive.
+The Skill uses Codex as orchestrator, fixed custom subagents, host/MCP search tools, standard-library control scripts, and append-only JSONL. It intentionally avoids LangGraph, queues, daemons, vector databases, memory middleware, and duplicate Wikis.
+
+## Workspace format 2
+
+```text
+<topic>/
+├── AGENTS.md
+├── topic.toml
+├── state.json
+├── context.md
+├── questions.md
+├── source_map.md
+├── tasks.jsonl
+├── claims.jsonl
+├── plans/current-design.json
+├── evidence/cards.jsonl
+├── memory/lessons.jsonl
+├── reports/
+└── logs/
+```
+
+The main session is the only writer. Subagents return structured results. External content remains untrusted.

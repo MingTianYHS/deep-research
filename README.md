@@ -1,24 +1,20 @@
 # deep-research
 
-A lightweight, citation-first user-level deep-research Skill for OpenAI Codex.
+A lightweight citation-first deep-research Skill for OpenAI Codex.
 
-**Release candidate:** `0.8.0rc1` · Python 3.11+
+**Release candidate:** `0.9.0rc1` · Python 3.11+
 
-## Capabilities
+## Topic expert model
 
-- decision-relevant question decomposition and bounded named subagents
-- expected-answer plus disconfirming search
-- version-pinned technical research
-- non-bypassable Worker and Source Attempt contracts
-- URL/content deduplication and 401/403/404/error-page rejection
-- optional `web-access` fallback for authorized login, dynamic, and anti-bot pages
-- Evidence Cards, reviewed Claim–Evidence relations, adversarial critique
-- Obsidian-native reports, quote audits, citation and quality gates
-- Rollout diagnostics and Windows/Linux CI
+Each topic workspace is a persistent Codex expert context. Start Codex from that directory; its `AGENTS.md` makes the main session the topic-expert coordinator. The coordinator owns planning, approvals, state, and writes and delegates only to three global read-only roles:
 
-No scheduler, daemon, queue, vector database, or heavyweight agent framework is used.
+- `topic_researcher`
+- `research_critic`
+- `research_synthesizer`
 
-## User-level installation
+Per-topic `topic-<slug>.toml` agents are deprecated. Expertise compounds through existing Claim/Evidence, a bounded rebuildable `context.md`, and Critic-validated `memory/lessons.jsonl`—not by changing model weights or duplicating a Wiki/database.
+
+## Install
 
 ```text
 %USERPROFILE%\.agents\skills\deep-research
@@ -27,34 +23,36 @@ No scheduler, daemon, queue, vector database, or heavyweight agent framework is 
 %USERPROFILE%\.codex\agents\research-synthesizer.toml
 ```
 
-Optional browser fallback:
-
-```text
-%USERPROFILE%\.agents\skills\web-access
-```
-
-`web-access` requires its own Node/browser setup. It may use the user's existing browser login only for content the user is authorized to access. Deep research never extracts cookies/tokens, bypasses authorization, or performs account-changing actions.
+Optional: `%USERPROFILE%\.agents\skills\web-access`.
 
 ```powershell
 py -3.11 "$HOME\.agents\skills\deep-research\scripts\runtimectl.py" doctor --strict
 $env:DEEP_RESEARCH_WORKSPACE_ROOT = 'D:\知识宇宙海\调研工作区'
 ```
 
-## Flow
+## New topic
 
 ```powershell
 $SKILL = "$HOME\.agents\skills\deep-research"
-py -3.11 "$SKILL\scripts\researchctl.py" init-topic 'AI短剧市场研究' --budget standard --install-agent
-py -3.11 "$SKILL\scripts\designctl.py" init --title 'AI短剧市场研究' --output design.json
-py -3.11 "$SKILL\scripts\designctl.py" validate --file design.json --strict
-py -3.11 "$SKILL\scripts\runtimectl.py" validate-worker --file worker.json --profile standard --require-gates
-py -3.11 "$SKILL\scripts\researchctl.py" ingest-worker <slug> --file worker.json
+py -3.11 "$SKILL\scripts\researchctl.py" init-topic 'AI短剧市场研究' --budget standard
+cd 'D:\知识宇宙海\调研工作区\AI短剧市场研究'
+codex
 ```
 
-`ingest-worker` repeats the complete Worker validation, so legacy or incomplete results cannot bypass the gate. It persists Source Attempts and complete Worker results before Evidence is used. Add `--rollout rollout.jsonl` to `validate-worker` when observed tool-call verification is available.
+Inside the topic directory:
 
-A failed static attempt may be followed once through the installed web-access Skill. The accepted browser extraction receives a distinct Source Attempt and content hash; the failed 401/403/404 attempt remains in the audit trail.
+```powershell
+py -3.11 "$SKILL\scripts\researchctl.py" plan --questions 5
+py -3.11 "$SKILL\scripts\researchctl.py" brief
+py -3.11 "$SKILL\scripts\researchctl.py" run-start --mode baseline
+```
 
-Reports use `YYYYMMDD-主题.md`, `YYYYMMDD-主题-更新.md`, or `YYYYMMDD-主题-最终.md`. Final validation requires nonzero valid citations, quality gates, and a Quote Audit containing observed text, match type, Source Attempt, and content hash.
+After a validated run, finish it and apply a Critic-reviewed Reflection. This increments the research generation and stores only reusable research lessons. Topic facts continue to live exclusively in Claim/Evidence.
 
-The deterministic control plane owns validation and persistence. Codex owns planning, tool use, evidence interpretation, critique, and synthesis.
+Existing workspaces migrate to format 2 with:
+
+```powershell
+py -3.11 "$SKILL\scripts\releasectl.py" workspace-migrate <slug> --apply
+```
+
+The project remains standard-library based: no scheduler, daemon, LangGraph, memory service, vector database, or heavyweight provider SDK.
