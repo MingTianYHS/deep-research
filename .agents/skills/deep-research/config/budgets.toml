@@ -1,5 +1,5 @@
 [lite]
-max_workers = 3
+max_workers = 4
 max_questions = 4
 max_queries = 8
 max_pages = 15
@@ -14,7 +14,7 @@ max_same_url_attempts = 2
 max_duration_minutes_per_worker = 5
 
 [standard]
-max_workers = 5
+max_workers = 6
 max_questions = 6
 max_queries = 15
 max_pages = 30
