@@ -6,7 +6,12 @@ max_pages = 15
 max_evidence_cards = 20
 estimated_input_tokens = 40000
 estimated_output_tokens = 5000
-reserve_ratio = 0.10
+reserve_ratio = 0.20
+max_tool_calls_per_worker = 10
+max_search_queries_per_worker = 4
+max_source_pages_per_worker = 6
+max_same_url_attempts = 2
+max_duration_minutes_per_worker = 5
 
 [standard]
 max_workers = 5
@@ -16,7 +21,12 @@ max_pages = 30
 max_evidence_cards = 45
 estimated_input_tokens = 120000
 estimated_output_tokens = 12000
-reserve_ratio = 0.10
+reserve_ratio = 0.20
+max_tool_calls_per_worker = 16
+max_search_queries_per_worker = 6
+max_source_pages_per_worker = 10
+max_same_url_attempts = 2
+max_duration_minutes_per_worker = 8
 
 [deep]
 max_workers = 8
@@ -26,4 +36,9 @@ max_pages = 60
 max_evidence_cards = 90
 estimated_input_tokens = 300000
 estimated_output_tokens = 30000
-reserve_ratio = 0.12
+reserve_ratio = 0.20
+max_tool_calls_per_worker = 24
+max_search_queries_per_worker = 10
+max_source_pages_per_worker = 16
+max_same_url_attempts = 2
+max_duration_minutes_per_worker = 12
