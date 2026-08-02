@@ -1,51 +1,42 @@
-# Evidence and claim standard
+# Evidence and source-attempt standard
 
-Each evidence card is one atomic proposition, not a page summary.
+A Source Attempt records one access outcome. An Evidence Card records one atomic proposition and must reference an accepted Source Attempt.
+
+```json
+{
+  "id": "src-001",
+  "url": "https://example.com",
+  "normalized_url": "https://example.com/",
+  "status": "accepted",
+  "eligible_for_evidence": true,
+  "tool": "web_access",
+  "access_mode": "authenticated_browser",
+  "content_sha256": "...",
+  "http_status": null,
+  "source_version": "2026-08",
+  "reason": null
+}
+```
+
+A 401/403/404/login wall is stored as an unavailable static attempt. If web-access is locally installed, an authorized browser extraction is a separate attempt. Never rewrite the failed attempt as success.
 
 ```json
 {
   "id": "ev-uuid",
   "question_id": "q-001",
-  "source": {
-    "url": "https://example.com",
-    "canonical_url": "https://example.com",
-    "title": "Title",
-    "publisher": "Publisher",
-    "published_at": "2026-01-01",
-    "accessed_at": "2026-08-01T00:00:00Z",
-    "source_type": "official"
-  },
-  "statement": "One testable factual proposition with scope preserved.",
+  "source_attempt_id": "src-001",
+  "source": {"url": "https://example.com", "canonical_url": "https://example.com/", "title": "Title", "publisher": "Publisher", "published_at": "2026-01-01", "accessed_at": "2026-08-02T00:00:00Z", "source_type": "official"},
+  "statement": "One testable proposition with scope preserved.",
   "quote": "Exact source text.",
-  "locator": "section, line range, page, table, or timestamp",
+  "locator": "section, line, page, table, or timestamp",
   "stance": "support",
-  "relevance": "core",
   "confidence": 0.8,
   "independence_group": "origin-owner",
   "prompt_injection_risk": "low",
-  "tags": []
+  "version_compatibility": "exact"
 }
 ```
 
-## Atomicity and entailment
+Preserve dates, units, currency, denominator, population, geography, sample, epistemic type, uncertainty, and caveats. A quote supporting half a sentence cannot support the whole statement. Repeated reporting from one release, filing, dataset, interview, paper, or syndicated article is one `independence_group`.
 
-A card should be usable or rejectable as one unit. Preserve:
-
-- observation/event date separately from publication/access date;
-- units, currency, denominator, population, geography, and sample size;
-- whether the source reports an observation, author interpretation, forecast, or recommendation;
-- uncertainty intervals and caveats that materially change meaning.
-
-A quote that supports only half of a sentence cannot support the whole statement. Split the statement or add evidence.
-
-## Independence
-
-Multiple pages are not independent when they derive from one press release, filing, dataset, interview, paper, or syndicated article. Use that common origin as `independence_group`. Independent interpretation of the same dataset may add analytical diversity but not a second underlying observation.
-
-## Contradiction search
-
-For every core question, search at least one plausible disconfirming formulation. Preserve negative, null, and weakening evidence. Do not force conflicts into a false consensus; explain differences in population, date, method, or definition.
-
-Assess authority, directness, topic-relative freshness, specificity, and independence separately. Claims are versioned interpretations linked through support, contradict, and context relations. Core-claim status changes require review.
-
-Deduplicate by canonical URL, original-source cluster, normalized content hash, then title/publisher/date. Embeddings remain optional and unnecessary for this lightweight Skill.
+Unassessed prompt-injection risk is `unknown`, never automatically `low`. High-risk evidence is quarantined. Deduplicate by normalized URL, original-source cluster, content hash, then title/publisher/date.
