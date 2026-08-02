@@ -1,6 +1,6 @@
 [defaults]
 search_order = ["native_web", "exa", "tavily"]
-fetch_order = ["direct_fetch", "jina", "firecrawl", "browser"]
+fetch_order = ["direct_fetch", "jina", "web_access", "firecrawl", "browser"]
 max_fallbacks = 1
 
 [tools.native_web]
@@ -23,6 +23,13 @@ kind = "mcp"
 capabilities = ["github_search", "repo_read", "issue_search", "pull_request_search", "commit_read"]
 priority = 100
 cost_class = "low"
+
+[tools.web_access]
+enabled = true
+kind = "skill"
+capabilities = ["authenticated_page", "anti_bot_page", "dynamic_page", "browser_session"]
+priority = 95
+cost_class = "medium"
 
 [tools.exa]
 enabled = false
