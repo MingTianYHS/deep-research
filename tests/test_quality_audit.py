@@ -17,5 +17,6 @@ def test_quality_report_is_transparent_and_bounded():
 def test_audit_requires_observed_source_proof(tmp_path):
  report=tmp_path/"report.md";report.write_text("Fact [[ev-1]]");output=tmp_path/"audit.json";create_audit(report,{"ev-1":card()},output);audit=json.loads(output.read_text());audit["items"][0].update(status="verified",checked_at="2026-08-01T00:00:00Z",checked_by="codex/reviewer");atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
  audit["items"][0].update(observed_text="Exact quote",source_attempt_id="src-1",content_sha256="a"*64,match_type="exact");atomic_write_json(output,audit);assert validate_audit(output,True)["valid"]
- audit["items"][0]["content_sha256"]="b"*64;atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
+ audit["items"][0]["source_attempt_id"]="src-other";atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
+ audit["items"][0]["source_attempt_id"]="src-1";audit["items"][0]["content_sha256"]="b"*64;atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
  audit["items"][0]["content_sha256"]="a"*64;atomic_write_json(output,audit);report.write_text("Changed [[ev-1]]");assert not validate_audit(output,True)["valid"]
