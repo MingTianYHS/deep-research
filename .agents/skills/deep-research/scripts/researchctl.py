@@ -9,7 +9,7 @@ from lib.budget import BudgetExceeded,apply_delta,report
 from lib.citations import verify_report
 from lib.claims import change_status,create as create_claim,link as link_claim,materialize,validate_events
 from lib.evidence import ingest_worker_result,validate_card
-from lib.io_utils import append_jsonl,atomic_write_json,exclusive_lock,iter_jsonl,read_json,utc_now
+from lib.io_utils import atomic_write_json,exclusive_lock,iter_jsonl,read_json,utc_now
 from lib.reports import scaffold
 from lib.research_design import render_questions,template,validate_design
 from lib.runtime_preflight import codex_home
@@ -59,14 +59,24 @@ def cmd_init(a):
     (root/"topic.toml").write_text(f'title = {json.dumps(a.title,ensure_ascii=False)}\nslug = {json.dumps(slug,ensure_ascii=False)}\ncreated_at = "{utc_now()}"\nstatus = "active"\nbudget_profile = "{a.budget}"\nlanguage = "zh-CN"\n\n[scope]\ninclude = []\nexclude = []\ngeographies = []\n',encoding="utf-8")
     (root/"AGENTS.md").write_text(agents_template(a.title,root),encoding="utf-8")
     for rel,content in [("questions.md","# Research questions\n\n尚未建立当前 Research Design。\n"),("source_map.md","# Source map\n\n此文件由 Source Attempt 与 Evidence 派生，不是独立事实源。\n"),("tasks.jsonl",""),("claims.jsonl",""),("evidence/cards.jsonl",""),("logs/runs.jsonl",""),("logs/source_attempts.jsonl",""),("memory/lessons.jsonl",""),("logs/change_log.md",f"# Change log\n\n- {utc_now()} topic created\n")]: (root/rel).write_text(content,encoding="utf-8")
-    state={"workspace_format_version":2,"topic":slug,"status":"new","knowledge_status":"empty","baseline_completed":False,"research_generation":0,"budget_profile":a.budget,"created_at":utc_now(),"last_run_at":None,"active_run_id":None,"usage":{"estimated_input_tokens":0,"estimated_output_tokens":0,"queries":0,"pages":0,"evidence_cards":0},"open_questions":[],"next_actions":["define decision context and scope","create baseline research design"]};atomic_write_json(root/"state.json",state);render_context(root,build_brief(root))
+    state={"workspace_format_version":2,"topic":slug,"status":"new","knowledge_status":"empty","baseline_completed":False,"research_generation":0,"budget_profile":a.budget,"created_at":utc_now(),"last_run_at":None,"active_run_id":None,"context_generated_at":None,"usage":{"estimated_input_tokens":0,"estimated_output_tokens":0,"queries":0,"pages":0,"evidence_cards":0},"open_questions":[],"next_actions":["define decision context and scope","create baseline research design"]};atomic_write_json(root/"state.json",state);render_context(root,build_brief(root))
     warning="--install-agent is deprecated and no per-topic Agent TOML was created." if a.install_agent else None
     next_command=f"cd {json.dumps(str(root),ensure_ascii=False)}; codex";print(json.dumps({"topic":slug,"workspace_root":str(WORKSPACE_ROOT),"workspace":str(root),"agent_entry":"AGENTS.md","warning":warning,"next_command":next_command},ensure_ascii=False,indent=2))
 def cmd_plan(a):
     root=topic_dir(a.slug)
     with lock(root):
-        state=read_json(root/"state.json",{});design=template(topic_title(root,a.slug or root.name),a.questions,state.get("budget_profile","standard"));atomic_write_json(root/"plans/current-design.json",design);(root/"questions.md").write_text(render_questions(design),encoding="utf-8");ids=[q["id"] for q in design["questions"]];state.update(status="planned",open_questions=ids,next_actions=["replace placeholder questions","validate current design","start baseline run" if not state.get("baseline_completed") else "start incremental run"]);atomic_write_json(root/"state.json",state);context=render_context(root,build_brief(root))
-    print(json.dumps({"topic":state.get("topic"),"design":str(root/"plans/current-design.json"),"questions_created":len(ids),"context":context},ensure_ascii=False,indent=2))
+        state=read_json(root/"state.json",{});profile=state.get("budget_profile","standard");design_path=root/"plans/current-design.json"
+        if design_path.exists() and not a.force:
+            design=read_json(design_path,{});operation="synchronized"
+            for item in design.get("questions",[]):item.setdefault("status","open")
+        else:
+            try:design=template(topic_title(root,a.slug or root.name),a.questions,profile)
+            except ValueError as e:raise SystemExit(str(e)) from e
+            atomic_write_json(design_path,design);operation="reset" if design_path.exists() else "created"
+        check=validate_design(design,profile)
+        if not check["valid"]:raise SystemExit("invalid current design: "+"; ".join(check["errors"]))
+        atomic_write_json(design_path,design);(root/"questions.md").write_text(render_questions(design),encoding="utf-8");ids=[q["id"] for q in design["questions"] if q.get("status","open")=="open"];state.update(status="planned",open_questions=ids,next_actions=["replace placeholder questions" if operation!="synchronized" else "review synchronized design","validate current design","start baseline run" if not state.get("baseline_completed") else "start incremental run"]);atomic_write_json(root/"state.json",state);context=render_context(root,build_brief(root))
+    print(json.dumps({"topic":state.get("topic"),"design":str(design_path),"operation":operation,"open_questions":len(ids),"context":context},ensure_ascii=False,indent=2))
 def cmd_incremental_plan(a):
     root=topic_dir(a.slug);brief=build_brief(root,a.question);path=root/"plans"/f"brief-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json";atomic_write_json(path,brief);print(json.dumps({"path":str(path),"brief":brief},ensure_ascii=False,indent=2))
 def cmd_brief(a):
@@ -77,16 +87,20 @@ def cmd_reflect(a):
     root=topic_dir(a.slug)
     with lock(root):
         if read_json(root/"state.json",{}).get("active_run_id"):raise SystemExit("finish the active run before applying reflection")
-        value=json.loads(Path(a.file).read_text(encoding="utf-8"));outcome=apply_reflection(root,value);append_jsonl(root/"logs/runs.jsonl",[{"id":value["run_id"],"type":"run.reflected","summary":value["summary"],"at":utc_now(),"accepted_lessons":outcome["accepted_lessons"]}])
+        value=json.loads(Path(a.file).read_text(encoding="utf-8"));outcome=apply_reflection(root,value)
     print(json.dumps(outcome,ensure_ascii=False,indent=2))
 def cmd_run_start(a):
     root=topic_dir(a.slug)
     with lock(root):
         state=read_json(root/"state.json",{})
         if state.get("active_run_id"):raise SystemExit(f"active run already exists: {state['active_run_id']}")
-        if a.mode=="incremental" and not state.get("baseline_completed"):raise SystemExit("incremental mode requires a completed baseline")
-        rid=f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}";state.update(status="researching",active_run_id=rid);atomic_write_json(root/"state.json",state);append_jsonl(root/"logs/runs.jsonl",[{"id":rid,"mode":a.mode,"status":"running","started_at":utc_now()}])
-    print(json.dumps({"topic":state.get("topic"),"run_id":rid,"mode":a.mode},ensure_ascii=False,indent=2))
+        mode=a.mode
+        if mode=="initial":mode="incremental" if state.get("baseline_completed") else "baseline"
+        if mode=="incremental" and not state.get("baseline_completed"):raise SystemExit("incremental mode requires a completed baseline")
+        rid=f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}";state.update(status="researching",active_run_id=rid);atomic_write_json(root/"state.json",state)
+        from lib.io_utils import append_jsonl
+        append_jsonl(root/"logs/runs.jsonl",[{"id":rid,"mode":mode,"status":"running","started_at":utc_now()}])
+    print(json.dumps({"topic":state.get("topic"),"run_id":rid,"mode":mode},ensure_ascii=False,indent=2))
 def cmd_record_usage(a):
     root=topic_dir(a.slug)
     with lock(root):
@@ -128,14 +142,17 @@ def cmd_run_finish(a):
     with lock(root):
         state=read_json(root/"state.json",{});rid=state.get("active_run_id")
         if not rid:raise SystemExit("no active run")
-        state.update(status=a.status,active_run_id=None,last_run_at=utc_now());atomic_write_json(root/"state.json",state);append_jsonl(root/"logs/runs.jsonl",[{"id":rid,"status":a.status,"finished_at":utc_now(),"note":a.note}])
+        state.update(status=a.status,active_run_id=None,last_run_at=utc_now());atomic_write_json(root/"state.json",state)
+        from lib.io_utils import append_jsonl
+        append_jsonl(root/"logs/runs.jsonl",[{"id":rid,"status":a.status,"finished_at":utc_now(),"note":a.note}])
         with (root/"logs/change_log.md").open("a",encoding="utf-8") as h:h.write(f"- {utc_now()} {rid} finished: {a.status}"+(f" — {a.note}" if a.note else "")+"\n")
     print(json.dumps({"topic":state.get("topic"),"run_id":rid,"status":a.status,"next_action":"create and apply a Critic-validated reflection"},ensure_ascii=False,indent=2))
 def cmd_validate(a):
-    root=topic_dir(a.slug);errors=[];warnings=[];seen=set();evidence=evidence_map(root)
+    root=topic_dir(a.slug);errors=[];warnings=[];seen=set();evidence=evidence_map(root);state=read_json(root/"state.json",{})
     for rel in ["topic.toml","state.json","AGENTS.md","context.md","questions.md","tasks.jsonl","claims.jsonl","evidence/cards.jsonl","memory/lessons.jsonl","logs/runs.jsonl","logs/source_attempts.jsonl"]:
         if not (root/rel).exists():errors.append(f"missing {rel}")
-    if (root/"AGENT.md").exists():warnings.append("legacy AGENT.md exists; migrate to AGENTS.md")
+    if (root/"AGENT.md").exists():warnings.append("legacy AGENT.md exists; preserved for review, but AGENTS.md is authoritative")
+    if state.get("workspace_format_version")!=2:errors.append("workspace_format_version must be 2")
     try:
         for n,card in iter_jsonl(root/"evidence/cards.jsonl"):
             try:validate_card(card)
@@ -146,12 +163,14 @@ def cmd_validate(a):
             if lesson.get("type") not in LESSON_TYPES:errors.append(f"lesson line {n}: invalid type")
             for key in ("id","lesson","run_id","validated_by","status","created_at"):
                 if not lesson.get(key):errors.append(f"lesson line {n}: missing {key}")
+            if lesson.get("validated_by")!="research_critic":errors.append(f"lesson line {n}: validated_by must be research_critic")
     except (json.JSONDecodeError,TypeError) as e:errors.append(f"invalid JSONL: {e}")
     design_path=root/"plans/current-design.json"
     if design_path.exists():
-        design=read_json(design_path,{});check=validate_design(design);errors += [f"design: {x}" for x in check["errors"]];warnings += [f"design: {x}" for x in check["warnings"]]
-        ids=[q.get("id") for q in design.get("questions",[])];state_ids=read_json(root/"state.json",{}).get("open_questions",[])
-        if ids!=state_ids:warnings.append("state.open_questions differs from current design")
+        design=read_json(design_path,{});check=validate_design(design,state.get("budget_profile","standard"));errors += [f"design: {x}" for x in check["errors"]];warnings += [f"design: {x}" for x in check["warnings"]]
+        ids=[q.get("id") for q in design.get("questions",[]) if q.get("status","open")=="open"]
+        if ids!=state.get("open_questions",[]):errors.append("state.open_questions differs from current design")
+        if (root/"questions.md").exists() and (root/"questions.md").read_text(encoding="utf-8")!=render_questions(design):errors.append("questions.md is stale; run researchctl.py plan to synchronize it")
     if (root/"context.md").exists() and len((root/"context.md").read_text(encoding="utf-8"))>MAX_CONTEXT_CHARS:errors.append("context.md exceeds bounded context limit")
     old_agent=codex_home()/"agents"/f"topic-{root.name}.toml"
     if old_agent.exists():warnings.append(f"deprecated per-topic Agent exists: {old_agent}")
@@ -171,7 +190,7 @@ def add_topic(sub,name,func):
 def parser():
     p=argparse.ArgumentParser(prog="researchctl");s=p.add_subparsers(dest="command",required=True)
     x=s.add_parser("init-topic");x.add_argument("title");x.add_argument("--slug");x.add_argument("--budget",choices=["lite","standard","deep"],default="standard");x.add_argument("--install-agent",action="store_true",help="deprecated compatibility flag");x.add_argument("--force",action="store_true");x.set_defaults(func=cmd_init)
-    x=add_topic(s,"plan",cmd_plan);x.add_argument("--questions",type=int,default=5,choices=range(1,9))
+    x=add_topic(s,"plan",cmd_plan);x.add_argument("--questions",type=int,default=5,choices=range(1,9));x.add_argument("--force",action="store_true",help="replace the current design instead of synchronizing it")
     x=add_topic(s,"incremental-plan",cmd_incremental_plan);x.add_argument("--question")
     x=add_topic(s,"brief",cmd_brief);x.add_argument("--question");x.add_argument("--output")
     x=add_topic(s,"reflect",cmd_reflect);x.add_argument("--file",required=True)
