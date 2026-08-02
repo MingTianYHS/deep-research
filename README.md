@@ -55,4 +55,10 @@ Existing workspaces migrate to format 2 with:
 py -3.11 "$SKILL\scripts\releasectl.py" workspace-migrate <slug> --apply
 ```
 
+## Free-quota search
+
+The default registry enables native web, Tavily, Exa, Jina, and Firecrawl without permitting paid overage. Workers select one provider per query: native web for ordinary and official discovery, Tavily for current web/news and structured extraction, Exa for semantic discovery, GitHub tools for repository evidence, and Firecrawl only as a quota-bounded dynamic-page or research-index fallback.
+
+Queries use a bounded ladder: broad discovery, `site:` authority targeting, exact-title or identifier verification, original-document lookup, disconfirming search, and a material cross-language check. Quota exhaustion falls back to another free route. The Skill never rotates multiple accounts or keys to evade provider limits, and credentials must stay outside the repository and topic workspaces.
+
 The project remains standard-library based: no scheduler, daemon, LangGraph, memory service, vector database, or heavyweight provider SDK.

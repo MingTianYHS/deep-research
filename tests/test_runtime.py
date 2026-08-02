@@ -1,5 +1,6 @@
 import json
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parents[1] / ".agents/skills/deep-research/scripts"
@@ -42,5 +43,23 @@ def test_ingest_rejects_legacy_worker(tmp_path):
     except ValueError as exc: assert "budget_profile" in str(exc)
 
 
-def test_tool_registry_valid():
-    registry=load_registry(SCRIPT_DIR.parent/"config/tools.toml"); assert validate_registry(registry)==[]; assert resolve(registry,"repo_read")[0]["name"]=="github_mcp"; assert resolve(registry,"authenticated_page")[0]["name"]=="web_access"
+def test_tool_registry_valid_and_honors_default_orders():
+    registry=load_registry(SCRIPT_DIR.parent/"config/tools.toml")
+    assert validate_registry(registry)==[]
+    assert [item["name"] for item in resolve(registry,"web_search")]==["native_web","tavily","exa"]
+    assert resolve(registry,"repo_read")[0]["name"]=="github_mcp"
+    assert [item["name"] for item in resolve(registry,"authenticated_page")]==["web_access","browser"]
+    assert registry["tools"]["firecrawl"]["enabled"]
+    assert "firecrawl" not in registry["defaults"]["search_order"]
+    assert registry["defaults"]["free_quota_only"]
+    assert not registry["defaults"]["allow_paid_overage"]
+
+
+def test_tool_registry_rejects_paid_overage_and_duplicate_order():
+    registry=load_registry(SCRIPT_DIR.parent/"config/tools.toml")
+    invalid=deepcopy(registry)
+    invalid["defaults"]["allow_paid_overage"]=True
+    invalid["defaults"]["search_order"].append("native_web")
+    errors=validate_registry(invalid)
+    assert "free_quota_only cannot allow paid overage" in errors
+    assert "defaults.search_order must not contain duplicates" in errors
