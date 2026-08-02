@@ -10,14 +10,15 @@ from lib.reports import scaffold
 def sample_card(evidence_id="ev-1"):
     return {"id":evidence_id,"question_id":"q-001","source_attempt_id":"src-1","source":{"url":"https://example.com","canonical_url":"https://example.com"},"statement":"Fact","quote":"Exact quote","stance":"support","confidence":0.8}
 
-def test_core_claim_requires_two_step_approval(tmp_path):
+def test_core_claim_requires_support_and_two_step_approval(tmp_path):
     path=tmp_path/"claims.jsonl"; claim=create(path,"Core claim",0.7,True)
-    try: change_status(path,claim["id"],"supported","direct",True); assert False
-    except ValueError: pass
-    assert change_status(path,claim["id"],"supported","evidence",False)["type"]=="claim.transition.proposed"; assert change_status(path,claim["id"],"supported","reviewed",True)["type"]=="claim.status.changed"
+    try: change_status(path,claim["id"],"supported","direct",False); assert False
+    except ValueError as exc: assert "support evidence" in str(exc)
+    link(path,claim["id"],"ev-1","support",0.9)
+    assert change_status(path,claim["id"],"supported","evidence",False)["type"]=="claim.transition.proposed"; assert change_status(path,claim["id"],"supported","reviewed",True,{"ev-1"})["type"]=="claim.status.changed"
 
 def test_claim_link_and_noncore_status(tmp_path):
-    path=tmp_path/"claims.jsonl"; claim=create(path,"Claim",0.7,False); link(path,claim["id"],"ev-1","support",0.9); change_status(path,claim["id"],"supported","verified",False); assert materialize(path)[claim["id"]]["status"]=="supported"
+    path=tmp_path/"claims.jsonl"; claim=create(path,"Claim",0.7,False); link(path,claim["id"],"ev-1","support",0.9); change_status(path,claim["id"],"supported","verified",False,{"ev-1"}); assert materialize(path)[claim["id"]]["status"]=="supported"
 
 def test_citation_verification_and_zero_citation_failure(tmp_path):
     report=tmp_path/"report.md"; report.write_text("A fact [[ev-1]] and missing [[ev-404]].",encoding="utf-8"); result=verify_report(report,{"ev-1":sample_card()}); assert result["missing_evidence"]==["ev-404"] and not result["valid"]

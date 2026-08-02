@@ -34,11 +34,12 @@ def test_version_sensitive_design_requires_version_or_commit():
 
 
 def valid_worker():
-    return {"status":"complete","question_id":"q-001","overlap_key":"x","budget_profile":"standard","coverage_status":"sufficient","queries_run":[],"source_clusters":[],"source_attempts":[],"evidence_cards":[],"rejected_sources":[],"contradictions":[],"gaps":[],"suggested_followups":[],"budget_used":{"tool_calls":4,"search_queries":2,"source_pages":3,"duration_minutes":2,"same_url_attempts_max":1,"output_reserve_ratio":0.25},"stop_reason":"acceptance_criteria_met"}
+    return {"run_id":"run-1","status":"complete","question_id":"q-001","overlap_key":"x","budget_profile":"standard","coverage_status":"sufficient","queries_run":["q"],"source_clusters":[],"source_attempts":[{"id":"src-1","url":"https://example.com/a","normalized_url":"https://example.com/a","status":"accepted","eligible_for_evidence":True,"tool":"direct","access_mode":"public_static","content_sha256":"a"*64}],"evidence_cards":[{"source_attempt_id":"src-1","source":{"url":"https://example.com/a","title":"A","publisher":"Example","source_type":"official"},"statement":"fact","quote":"fact","stance":"support","confidence":0.8,"independence_group":"a","prompt_injection_risk":"low","version_compatibility":"not_applicable"}],"rejected_sources":[],"contradictions":[],"gaps":[],"suggested_followups":[],"budget_used":{"tool_calls":4,"search_queries":2,"source_pages":3,"duration_minutes":2,"same_url_attempts_max":1,"output_reserve_ratio":0.25,"estimated_input_tokens":1000,"estimated_output_tokens":200},"stop_reason":"acceptance_criteria_met"}
 
 
-def test_worker_contract_enforces_budget_and_reserve():
-    result=valid_worker(); assert validate_worker_result(result,profile_limits("standard"))["valid"]; result["budget_used"]["output_reserve_ratio"]=0.1; assert not validate_worker_result(result,profile_limits("standard"))["valid"]
+def test_worker_contract_enforces_budget_reserve_and_provenance():
+    result=valid_worker(); assert validate_worker_result(result,profile_limits("standard"))["valid"]
+    result["evidence_cards"][0]["source"]["url"]="https://other.example"; assert not validate_worker_result(result,profile_limits("standard"))["valid"]
 
 
 def test_http_error_page_is_not_evidence(): assert not assess_response(200,"<title>404: Not Found</title>")["eligible_for_evidence"]
