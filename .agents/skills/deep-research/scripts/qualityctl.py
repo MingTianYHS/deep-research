@@ -30,6 +30,10 @@ def evidence_map(root: Path) -> dict[str, dict]:
     return {card["id"]: card for _, card in iter_jsonl(root / "evidence/cards.jsonl") if card.get("id")}
 
 
+def source_attempt_map(root: Path) -> dict[str, dict]:
+    return {item["id"]: item for _, item in iter_jsonl(root / "logs/source_attempts.jsonl") if item.get("id")}
+
+
 def cmd_quality(args: argparse.Namespace) -> None:
     root = root_for(args.slug)
     cards = list(evidence_map(root).values())
@@ -48,7 +52,7 @@ def cmd_quality(args: argparse.Namespace) -> None:
 def cmd_audit_init(args: argparse.Namespace) -> None:
     root = root_for(args.slug); report_path = Path(args.report)
     output = Path(args.output) if args.output else report_path.with_suffix(report_path.suffix + ".audit.json")
-    audit = create_audit(report_path, evidence_map(root), output)
+    audit = create_audit(report_path, evidence_map(root), output, source_attempt_map(root))
     print(json.dumps({"audit": str(output), "items": len(audit["items"])}, ensure_ascii=False, indent=2))
 
 
