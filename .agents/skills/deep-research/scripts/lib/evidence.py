@@ -49,8 +49,7 @@ def validate_card(card: dict[str, Any]) -> None:
 def ingest_worker_result(cards_path: Path, result: dict[str, Any], max_new: int) -> dict[str, Any]:
     topic_root = cards_path.parent.parent
     context_validation = validate_ingest_context(topic_root, result)
-    if not context_validation["valid"]:
-        raise ValueError("invalid worker ingestion context: " + "; ".join(context_validation["errors"]))
+    if not context_validation["valid"]: raise ValueError("invalid worker ingestion context: " + "; ".join(context_validation["errors"]))
     profile = result.get("budget_profile")
     if not profile: raise ValueError("worker result requires budget_profile")
     validation = validate_worker_result(result, profile_limits(str(profile)))
@@ -67,5 +66,7 @@ def ingest_worker_result(cards_path: Path, result: dict[str, Any], max_new: int)
     append_jsonl(topic_root / "logs/source_attempts.jsonl", result["source_attempts"])
     append_jsonl(cards_path, accepted)
     worker_path = topic_root / "logs/workers" / f"{result['worker_result_id']}.json"
-    atomic_write_json(worker_path, result)
-    return {"accepted": len(accepted), "duplicates": len(duplicate_ids), "duplicate_ids": duplicate_ids, "worker_validation": validation, "ingest_context_validation": context_validation, "worker_result_log": str(worker_path)}
+    logged = deepcopy(result)
+    logged["ingest_summary"] = {"accepted_evidence_ids": [card["id"] for card in accepted], "duplicate_evidence_ids": duplicate_ids, "accepted_count": len(accepted), "duplicate_count": len(duplicate_ids)}
+    atomic_write_json(worker_path, logged)
+    return {"accepted": len(accepted), "accepted_ids": [card["id"] for card in accepted], "duplicates": len(duplicate_ids), "duplicate_ids": duplicate_ids, "worker_validation": validation, "ingest_context_validation": context_validation, "worker_result_log": str(worker_path)}

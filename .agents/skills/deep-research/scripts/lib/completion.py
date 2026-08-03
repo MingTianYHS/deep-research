@@ -32,8 +32,9 @@ def _quality(root: Path, cards: list[dict[str, Any]], policy_file: Path) -> dict
 def completion_gate(root: Path, run_id: str, skill_dir: Path) -> dict[str, Any]:
     errors: list[str] = []; workers = _workers(root, run_id)
     if not workers: errors.append("complete run requires at least one persisted Worker Result for the active run")
-    accepted_attempts = {attempt.get("id") for worker in workers for attempt in worker.get("source_attempts", []) if isinstance(attempt, dict) and attempt.get("status") == "accepted" and attempt.get("eligible_for_evidence")}; evidence = _evidence(root); run_cards = [card for card in evidence.values() if card.get("source_attempt_id") in accepted_attempts]
-    if not run_cards: errors.append("complete run requires accepted Evidence from the active run")
+    accepted_evidence_ids = {evidence_id for worker in workers for evidence_id in (worker.get("ingest_summary") or {}).get("accepted_evidence_ids", []) if isinstance(evidence_id, str)}
+    evidence = _evidence(root); run_cards = [card for evidence_id, card in evidence.items() if evidence_id in accepted_evidence_ids]
+    if not run_cards: errors.append("complete run requires Evidence actually accepted during the active run")
     critics = approved_reviews_for_run(root, run_id)
     if not critics: errors.append("complete run requires an approved persisted Critic Review for the active run")
     quality = _quality(root, list(evidence.values()), skill_dir / "config/source_policy.toml")
@@ -49,4 +50,4 @@ def completion_gate(root: Path, run_id: str, skill_dir: Path) -> dict[str, Any]:
         citation = verify_report(report_path, evidence); audit_result = validate_audit(audit_path, require_all_verified=True); rubric_result = evaluate_report(report_path, evidence, rubric); report_candidates.append({"report": str(report_path), "audit": audit_result, "citations": citation, "rubric": rubric_result})
     passing_reports = [item for item in report_candidates if item["audit"]["valid"] and item["citations"]["valid"] and item["rubric"]["passes_all_gates"]]
     if not passing_reports: errors.append("complete run requires a current-run citation-valid report that passes rubric gates and final Quote Audit")
-    return {"valid": not errors, "errors": errors, "run_id": run_id, "worker_count": len(workers), "run_evidence_count": len(run_cards), "critic_review_ids": [item["id"] for item in critics], "quality": quality, "report_candidates": report_candidates, "passing_reports": [item["report"] for item in passing_reports]}
+    return {"valid": not errors, "errors": errors, "run_id": run_id, "worker_count": len(workers), "run_evidence_count": len(run_cards), "accepted_evidence_ids": sorted(accepted_evidence_ids), "critic_review_ids": [item["id"] for item in critics], "quality": quality, "report_candidates": report_candidates, "passing_reports": [item["report"] for item in passing_reports]}
