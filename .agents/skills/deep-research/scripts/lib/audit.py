@@ -14,7 +14,7 @@ MATCH_TYPES = {"exact", "normalized", "semantic", "locator_only"}
 def file_sha256(path: Path) -> str: return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def create_audit(report_path: Path, evidence: dict[str, dict[str, Any]], output: Path, source_attempts: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+def create_audit(report_path: Path, evidence: dict[str, dict[str, Any]], output: Path, source_attempts: dict[str, dict[str, Any]] | None = None, run_id: str | None = None) -> dict[str, Any]:
     attempts = source_attempts or {}
     report_text = report_path.read_text(encoding="utf-8"); cited = list(dict.fromkeys(CITATION_RE.findall(report_text))); items = []
     for evidence_id in cited:
@@ -23,7 +23,7 @@ def create_audit(report_path: Path, evidence: dict[str, dict[str, Any]], output:
         source = card.get("source") or {}; attempt_id = card.get("source_attempt_id"); attempt = attempts.get(attempt_id) or {}
         accepted = attempt.get("status") == "accepted" and attempt.get("eligible_for_evidence") and attempt.get("content_sha256")
         items.append({"evidence_id": evidence_id, "status": "pending" if accepted else "failed", "url": source.get("url"), "expected_source_attempt_id": attempt_id, "expected_content_sha256": attempt.get("content_sha256"), "source_attempt_id": attempt_id, "content_sha256": None, "statement": card.get("statement"), "expected_quote": card.get("quote"), "locator": card.get("locator"), "match_type": None, "checked_at": None, "checked_by": None, "observed_text": None, "reason": "" if accepted else "Evidence does not reference an accepted hashed Source Attempt", "instructions": "Fetch with a read-only route, compare observed text and locator, preserve the expected Source Attempt identity/hash, then set status."})
-    audit = {"report": str(report_path), "report_sha256": file_sha256(report_path), "created_at": utc_now(), "source_identity_frozen": True, "items": items}; atomic_write_json(output, audit); return audit
+    audit = {"report": str(report_path), "report_sha256": file_sha256(report_path), "run_id": run_id, "created_at": utc_now(), "source_identity_frozen": True, "items": items}; atomic_write_json(output, audit); return audit
 
 
 def validate_audit(path: Path, require_all_verified: bool = False) -> dict[str, Any]:
@@ -43,4 +43,4 @@ def validate_audit(path: Path, require_all_verified: bool = False) -> dict[str, 
             if item.get("content_sha256") != item.get("expected_content_sha256"): errors.append(f"item {index}: content_sha256 differs from frozen Source Attempt")
         if status in {"failed", "unavailable"} and not item.get("reason"): errors.append(f"item {index}: {status} item requires reason")
     if require_all_verified and any(counts[status] for status in ("pending", "failed", "unavailable")): errors.append("final audit requires every citation to be verified")
-    return {"audit": str(path), "counts": counts, "errors": errors, "valid": not errors}
+    return {"audit": str(path), "run_id": audit.get("run_id"), "counts": counts, "errors": errors, "valid": not errors}
