@@ -11,6 +11,12 @@ All notable changes to this project are documented here.
 ### Changed
 
 - Free-quota provider routing now distinguishes query construction from tool selection and no longer uses result counts as a low-yield threshold.
+- Runtime preflight now requires provider manifests and the Query Craft/Tool Routing references used by installed agents.
+
+### Fixed
+
+- Real topic workspaces are ignored by Git while the tracked `.gitkeep` remains available.
+- Workspace migration, Evidence lineage, and Quote Audit documentation now match format 2 and current validators.
 
 ## 0.9.0rc1 - 2026-08-02
 

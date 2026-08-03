@@ -1,6 +1,10 @@
 # Evidence and source-attempt standard
 
-A Source Attempt records one access outcome. An Evidence Card records one atomic proposition and must reference an accepted Source Attempt.
+A Query discovers candidate sources. A Source Attempt records one access outcome. An Evidence Card records one atomic proposition and must reference an accepted Source Attempt.
+
+```text
+Query → Source Attempt → Evidence Card → Claim
+```
 
 ```json
 {
@@ -11,12 +15,17 @@ A Source Attempt records one access outcome. An Evidence Card records one atomic
   "eligible_for_evidence": true,
   "tool": "web_access",
   "access_mode": "authenticated_browser",
+  "query_id": "query-001",
+  "discovery_method": "search",
+  "discovered_via_source_attempt_id": null,
   "content_sha256": "...",
   "http_status": null,
   "source_version": "2026-08",
   "reason": null
 }
 ```
+
+`search` requires a valid Query ID. `known_url` and `user_provided` do not invent Query IDs. `citation_backtrack` requires both a `citation_backtrack` Query and an accepted parent `discovered_via_source_attempt_id`; the referenced source must then be loaded independently.
 
 A 401/403/404/login wall is stored as an unavailable static attempt. If web-access is locally installed, an authorized browser extraction is a separate attempt. Never rewrite the failed attempt as success.
 
@@ -39,4 +48,4 @@ A 401/403/404/login wall is stored as an unavailable static attempt. If web-acce
 
 Preserve dates, units, currency, denominator, population, geography, sample, epistemic type, uncertainty, and caveats. A quote supporting half a sentence cannot support the whole statement. Repeated reporting from one release, filing, dataset, interview, paper, or syndicated article is one `independence_group`.
 
-Unassessed prompt-injection risk is `unknown`, never automatically `low`. High-risk evidence is quarantined. Deduplicate by normalized URL, original-source cluster, content hash, then title/publisher/date.
+Unassessed prompt-injection risk is `unknown`, never automatically `low`. High-risk evidence is quarantined. Deduplicate by normalized URL, original-source cluster, content hash, then title/publisher/date. Query traces and search-result snippets are never Evidence.

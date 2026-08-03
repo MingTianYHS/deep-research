@@ -5,7 +5,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-REQUIRED_SKILL_FILES = ["SKILL.md", "config/tools.toml", "config/budgets.toml", "config/providers.toml", "config/source_policy.toml", "config/report_rubric.toml", "scripts/researchctl.py", "scripts/qualityctl.py", "scripts/releasectl.py", "scripts/designctl.py", "scripts/evalctl.py", "scripts/runtimectl.py", "scripts/lib/workspace_paths.py", "scripts/lib/runtime_preflight.py", "scripts/lib/worker_contract.py", "scripts/lib/source_attempts.py", "scripts/lib/rollout_audit.py", "references/RESEARCH_DESIGN.md", "references/QUERY_CRAFT.md", "references/TOOL_ROUTING.md"]
+REQUIRED_SKILL_FILES = ["SKILL.md", "config/tools.toml", "config/budgets.toml", "config/providers.toml", "config/source_policy.toml", "config/report_rubric.toml", "scripts/researchctl.py", "scripts/qualityctl.py", "scripts/releasectl.py", "scripts/designctl.py", "scripts/evalctl.py", "scripts/runtimectl.py", "scripts/lib/workspace_paths.py", "scripts/lib/runtime_preflight.py", "scripts/lib/worker_contract.py", "scripts/lib/worker_context.py", "scripts/lib/source_attempts.py", "scripts/lib/rollout_audit.py", "references/RESEARCH_DESIGN.md", "references/QUERY_CRAFT.md", "references/TOOL_ROUTING.md"]
 REQUIRED_AGENTS = ["topic-researcher.toml", "research-critic.toml", "research-synthesizer.toml"]
 SECRET_PATTERNS = [re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"), re.compile(r"(?i)authorization\s*:\s*bearer\s+[A-Za-z0-9._-]{12,}"), re.compile(r"(?i)(?:api[_-]?key|secret|token)\s*[=:]\s*['\"]?[A-Za-z0-9_-]{16,}")]
 

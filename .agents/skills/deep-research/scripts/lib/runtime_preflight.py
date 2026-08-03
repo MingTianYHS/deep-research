@@ -7,7 +7,22 @@ from pathlib import Path
 from typing import Any
 
 AGENT_FILES = {"topic-researcher.toml": "topic_researcher", "research-critic.toml": "research_critic", "research-synthesizer.toml": "research_synthesizer"}
-REQUIRED_SKILL_FILES = ("SKILL.md", "config/budgets.toml", "config/tools.toml", "config/source_policy.toml", "config/report_rubric.toml", "scripts/researchctl.py", "scripts/runtimectl.py", "scripts/qualityctl.py", "scripts/evalctl.py", "scripts/releasectl.py", "scripts/designctl.py")
+REQUIRED_SKILL_FILES = (
+    "SKILL.md",
+    "config/budgets.toml",
+    "config/tools.toml",
+    "config/providers.toml",
+    "config/source_policy.toml",
+    "config/report_rubric.toml",
+    "references/QUERY_CRAFT.md",
+    "references/TOOL_ROUTING.md",
+    "scripts/researchctl.py",
+    "scripts/runtimectl.py",
+    "scripts/qualityctl.py",
+    "scripts/evalctl.py",
+    "scripts/releasectl.py",
+    "scripts/designctl.py",
+)
 
 
 def user_root(home: Path | None = None) -> Path: return (home or Path.home()).expanduser()

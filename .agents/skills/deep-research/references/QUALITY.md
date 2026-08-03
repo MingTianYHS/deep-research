@@ -19,11 +19,11 @@ Dimensions:
 
 High prompt-injection-risk cards are visible but excluded from aggregate quality scores.
 
-Quality gates cover average card score, primary-source ratio, question coverage, and high-risk-card count. A failed gate is a review signal, not permission to invent evidence.
+Quality gates currently cover average card score, primary-source ratio, question coverage, and high-risk-card count. A failed gate is a review signal, not permission to invent evidence.
 
 ## Quote-fidelity audit
 
-Structural citation checks prove that evidence IDs and required fields exist. Quote fidelity requires fetching the source and comparing the recorded quote/locator with observed text.
+Structural citation checks prove that Evidence IDs and required fields exist. Quote fidelity requires fetching the source and comparing the recorded quote or locator with observed text.
 
 ```bash
 python scripts/qualityctl.py audit-init topic --report path/to/report.md
@@ -31,4 +31,12 @@ python scripts/qualityctl.py audit-init topic --report path/to/report.md
 python scripts/qualityctl.py audit-validate --audit path/to/report.md.audit.json --final
 ```
 
-A verified item must include `checked_at` and `checked_by`. Failed or unavailable items require a reason. Final reports require all cited items verified unless the user explicitly accepts unresolved citations.
+A verified item must include:
+
+- `checked_at` and `checked_by`;
+- `observed_text`;
+- the accepted `source_attempt_id`;
+- the observed `content_sha256`;
+- `match_type`: `exact`, `normalized`, `semantic`, or `locator_only`.
+
+Failed or unavailable items require a reason. Final reports require all cited items verified unless the user explicitly accepts unresolved citations. Audit metadata supports review but does not replace source-identity checks or semantic judgment.
