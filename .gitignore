@@ -4,6 +4,5 @@ __pycache__/
 .env
 .DS_Store
 dist/
-workspace/topics/*/cache/
-workspace/topics/*/evidence/raw/
-workspace/topics/*/logs/*.tmp
+workspace/topics/*
+!workspace/topics/.gitkeep
