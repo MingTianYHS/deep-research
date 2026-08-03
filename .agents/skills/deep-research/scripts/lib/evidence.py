@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from .io_utils import append_jsonl, atomic_write_json, iter_jsonl, utc_now
+from .io_utils import append_jsonl, atomic_write_json, iter_jsonl, read_json, utc_now
 from .worker_context import validate_ingest_context
 from .worker_contract import profile_limits, validate_worker_result
 
@@ -46,8 +47,32 @@ def validate_card(card: dict[str, Any]) -> None:
     if not card.get("quote") and not card.get("locator"): raise ValueError("evidence requires quote or locator")
 
 
+def _result_digest(result: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _append_missing(path: Path, records: list[dict[str, Any]], key: str = "id") -> None:
+    existing = {item.get(key) for _, item in iter_jsonl(path) if item.get(key)}
+    append_jsonl(path, [item for item in records if item.get(key) not in existing])
+
+
+def _resume_pending(topic_root: Path, pending_path: Path, result: dict[str, Any]) -> dict[str, Any]:
+    pending = read_json(pending_path, {})
+    if pending.get("input_sha256") != _result_digest(result): raise ValueError(f"pending worker transaction differs from retry: {result.get('worker_result_id')}")
+    _append_missing(topic_root / "logs/source_attempts.jsonl", pending.get("source_attempts", []))
+    _append_missing(topic_root / "evidence/cards.jsonl", pending.get("accepted_cards", []))
+    worker_path = topic_root / "logs/workers" / f"{result['worker_result_id']}.json"
+    atomic_write_json(worker_path, pending["logged"])
+    pending_path.unlink(missing_ok=True)
+    outcome = dict(pending["outcome"]); outcome["recovered_transaction"] = True
+    return outcome
+
+
 def ingest_worker_result(cards_path: Path, result: dict[str, Any], max_new: int) -> dict[str, Any]:
     topic_root = cards_path.parent.parent
+    worker_id = result.get("worker_result_id")
+    pending_path = topic_root / "logs/workers" / f".{worker_id}.pending.json"
+    if pending_path.exists(): return _resume_pending(topic_root, pending_path, result)
     context_validation = validate_ingest_context(topic_root, result)
     if not context_validation["valid"]: raise ValueError("invalid worker ingestion context: " + "; ".join(context_validation["errors"]))
     profile = result.get("budget_profile")
@@ -63,10 +88,13 @@ def ingest_worker_result(cards_path: Path, result: dict[str, Any], max_new: int)
         if card["id"] in existing_ids or key in existing_keys: duplicate_ids.append(card["id"]); continue
         existing_ids.add(card["id"]); existing_keys.add(key); accepted.append(card)
     if len(accepted) > max_new: raise ValueError(f"worker result adds {len(accepted)} cards but budget allows {max_new}")
-    append_jsonl(topic_root / "logs/source_attempts.jsonl", result["source_attempts"])
-    append_jsonl(cards_path, accepted)
     worker_path = topic_root / "logs/workers" / f"{result['worker_result_id']}.json"
     logged = deepcopy(result)
     logged["ingest_summary"] = {"accepted_evidence_ids": [card["id"] for card in accepted], "duplicate_evidence_ids": duplicate_ids, "accepted_count": len(accepted), "duplicate_count": len(duplicate_ids)}
+    outcome = {"accepted": len(accepted), "accepted_ids": [card["id"] for card in accepted], "duplicates": len(duplicate_ids), "duplicate_ids": duplicate_ids, "worker_validation": validation, "ingest_context_validation": context_validation, "worker_result_log": str(worker_path)}
+    atomic_write_json(pending_path, {"input_sha256": _result_digest(result), "source_attempts": result["source_attempts"], "accepted_cards": accepted, "logged": logged, "outcome": outcome})
+    _append_missing(topic_root / "logs/source_attempts.jsonl", result["source_attempts"])
+    _append_missing(cards_path, accepted)
     atomic_write_json(worker_path, logged)
-    return {"accepted": len(accepted), "accepted_ids": [card["id"] for card in accepted], "duplicates": len(duplicate_ids), "duplicate_ids": duplicate_ids, "worker_validation": validation, "ingest_context_validation": context_validation, "worker_result_log": str(worker_path)}
+    pending_path.unlink(missing_ok=True)
+    return outcome

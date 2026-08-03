@@ -20,10 +20,14 @@ def test_quality_report_is_transparent_and_bounded():
     try: evaluate([invalid],load_policy(POLICY),date(2026,8,1)); assert False
     except ValueError: pass
 
-def test_audit_requires_frozen_source_identity(tmp_path):
+def test_audit_requires_frozen_source_identity_and_real_quote_match(tmp_path):
     report=tmp_path/"report.md"; report.write_text("Fact [[ev-1]]"); output=tmp_path/"audit.json"; create_audit(report,{"ev-1":card()},output,{"src-1":attempt()})
     audit=json.loads(output.read_text()); item=audit["items"][0];assert item["expected_source_attempt_id"]=="src-1" and item["expected_content_sha256"]=="a"*64
-    item.update(status="verified",checked_at="2026-08-01T00:00:00Z",checked_by="codex/reviewer",observed_text="Exact quote",content_sha256="b"*64,match_type="exact"); atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
-    item.update(content_sha256="a"*64);atomic_write_json(output,audit);assert validate_audit(output,True)["valid"]
+    item.update(status="verified",checked_at="2026-08-01T00:00:00Z",checked_by="research_critic",observed_text="Wrong quote",content_sha256="a"*64,match_type="exact"); atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
+    item.update(observed_text="Exact quote",checked_at="not-a-date");atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
+    item.update(checked_at="2026-08-01T00:00:00Z",checked_by="any-string");atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
+    item.update(checked_by="research_critic");atomic_write_json(output,audit);assert validate_audit(output,True)["valid"]
+    item.update(match_type="semantic");atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
+    item.update(match_type="normalized",observed_text="  Exact   quote ");atomic_write_json(output,audit);assert validate_audit(output,True)["valid"]
     item.update(source_attempt_id="src-other");atomic_write_json(output,audit);assert not validate_audit(output,True)["valid"]
     report.write_text("Changed [[ev-1]]"); assert not validate_audit(output,True)["valid"]
