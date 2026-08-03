@@ -37,8 +37,8 @@ def completion_gate(root: Path, run_id: str, skill_dir: Path) -> dict[str, Any]:
     if not run_cards: errors.append("complete run requires Evidence actually accepted during the active run")
     critics = approved_reviews_for_run(root, run_id)
     if not critics: errors.append("complete run requires an approved persisted Critic Review for the active run")
-    quality = _quality(root, list(evidence.values()), skill_dir / "config/source_policy.toml")
-    if not quality["passes_all_gates"]: errors.append("complete run requires all live Evidence quality gates")
+    quality = _quality(root, run_cards, skill_dir / "config/source_policy.toml")
+    if not quality["passes_all_gates"]: errors.append("complete run requires all active-run Evidence quality gates")
     report_candidates: list[dict[str, Any]] = []; rubric = load_rubric(skill_dir / "config/report_rubric.toml")
     for audit_path in sorted((root / "reports").glob("*.md.audit.json")):
         audit = read_json(audit_path, {})
@@ -50,4 +50,4 @@ def completion_gate(root: Path, run_id: str, skill_dir: Path) -> dict[str, Any]:
         citation = verify_report(report_path, evidence); audit_result = validate_audit(audit_path, require_all_verified=True); rubric_result = evaluate_report(report_path, evidence, rubric); report_candidates.append({"report": str(report_path), "audit": audit_result, "citations": citation, "rubric": rubric_result})
     passing_reports = [item for item in report_candidates if item["audit"]["valid"] and item["citations"]["valid"] and item["rubric"]["passes_all_gates"]]
     if not passing_reports: errors.append("complete run requires a current-run citation-valid report that passes rubric gates and final Quote Audit")
-    return {"valid": not errors, "errors": errors, "run_id": run_id, "worker_count": len(workers), "run_evidence_count": len(run_cards), "accepted_evidence_ids": sorted(accepted_evidence_ids), "critic_review_ids": [item["id"] for item in critics], "quality": quality, "report_candidates": report_candidates, "passing_reports": [item["report"] for item in passing_reports]}
+    return {"valid": not errors, "errors": errors, "run_id": run_id, "worker_count": len(workers), "run_evidence_count": len(run_cards), "accepted_evidence_ids": sorted(accepted_evidence_ids), "critic_review_ids": [item["id"] for item in critics], "quality_scope": "active_run", "quality": quality, "report_candidates": report_candidates, "passing_reports": [item["report"] for item in passing_reports]}
