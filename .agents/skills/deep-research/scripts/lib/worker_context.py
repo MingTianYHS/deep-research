@@ -24,7 +24,7 @@ def _version_anchor_matches(result: dict[str, Any], question: dict[str, Any]) ->
         if not isinstance(query, dict) or query.get("intent") != "version_check":
             continue
         anchor = str(query.get("time_anchor", "")).strip().casefold()
-        if anchor and any(target in anchor or anchor in target for target in targets):
+        if anchor and any(target in anchor for target in targets):
             return True
     return False
 
@@ -55,7 +55,6 @@ def validate_ingest_context(topic_root: Path, result: dict[str, Any]) -> dict[st
     design = read_json(design_path, {})
     if not design_path.is_file() or not isinstance(design, dict):
         errors.append("worker ingestion requires plans/current-design.json")
-        question = None
     else:
         question_id = result.get("question_id")
         question = next((item for item in _questions(design) if item.get("id") == question_id), None)

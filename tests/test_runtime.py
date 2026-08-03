@@ -68,6 +68,15 @@ def test_ingest_rejects_duplicate_worker_result_id(tmp_path):
     except ValueError as exc: assert "already ingested" in str(exc)
 
 
+def test_version_sensitive_question_requires_full_target_anchor(tmp_path):
+    path=tmp_path/"topic/evidence/cards.jsonl"; path.parent.mkdir(parents=True); path.write_text("");prepare_topic(path)
+    design=json.loads((tmp_path/"topic/plans/current-design.json").read_text(encoding="utf-8"));design["questions"][0].update(version_sensitive=True,target_version="v1.2.3");(tmp_path/"topic/plans/current-design.json").write_text(json.dumps(design),encoding="utf-8")
+    result=worker_result();result["queries_run"].append({"id":"query-3","query":"example v1.2.3 release","intent":"version_check","provider":"native_web","language":"en","time_anchor":"v","fallback_of":None,"outcome":"candidate_found"});result["budget_used"]["tool_calls"]=3;result["budget_used"]["search_queries"]=3
+    try: ingest_worker_result(path,result,3); assert False
+    except ValueError as exc: assert "matching version_check query anchor" in str(exc)
+    result["queries_run"][-1]["time_anchor"]="release v1.2.3";outcome=ingest_worker_result(path,result,3);assert outcome["accepted"]==1
+
+
 def test_tool_registry_valid_and_honors_default_orders():
     registry=load_registry(SCRIPT_DIR.parent/"config/tools.toml")
     assert validate_registry(registry)==[]
