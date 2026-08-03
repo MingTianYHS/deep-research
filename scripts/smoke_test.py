@@ -13,6 +13,7 @@ PYTHON = sys.executable
 RESEARCH = ROOT / ".agents/skills/deep-research/scripts/researchctl.py"
 QUALITY = ROOT / ".agents/skills/deep-research/scripts/qualityctl.py"
 RELEASE = ROOT / ".agents/skills/deep-research/scripts/releasectl.py"
+LIFECYCLE = ROOT / "scripts/lifecycle_smoke_test.py"
 
 
 def run(*args: str) -> None:
@@ -35,6 +36,7 @@ def main() -> None:
     finally:
         if TARGET.exists(): shutil.rmtree(TARGET)
         if DIST.exists(): DIST.unlink()
+    run(LIFECYCLE)
 
 
 if __name__ == "__main__": main()
