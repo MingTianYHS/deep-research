@@ -8,6 +8,8 @@ from typing import Any
 from lib.budget import BudgetExceeded,apply_delta,report
 from lib.citations import verify_report
 from lib.claims import change_status,create as create_claim,link as link_claim,materialize,validate_events
+from lib.completion import completion_gate
+from lib.critic_reviews import require_reflection_review,save_review
 from lib.evidence import ingest_worker_result,validate_card
 from lib.io_utils import atomic_write_json,exclusive_lock,iter_jsonl,read_json,utc_now
 from lib.reports import scaffold
@@ -55,7 +57,7 @@ def agents_template(title:str,root:Path)->str:
 def cmd_init(a):
     slug=slugify(a.slug or a.title);root=WORKSPACE_ROOT/slug
     if root.exists() and not a.force:raise SystemExit(f"topic already exists: {root}")
-    for rel in ["evidence/raw","reports","plans","cache","logs","logs/workers","memory"]:(root/rel).mkdir(parents=True,exist_ok=True)
+    for rel in ["evidence/raw","reports","plans","cache","logs","logs/workers","logs/critic_reviews","memory"]:(root/rel).mkdir(parents=True,exist_ok=True)
     (root/"topic.toml").write_text(f'title = {json.dumps(a.title,ensure_ascii=False)}\nslug = {json.dumps(slug,ensure_ascii=False)}\ncreated_at = "{utc_now()}"\nstatus = "active"\nbudget_profile = "{a.budget}"\nlanguage = "zh-CN"\n\n[scope]\ninclude = []\nexclude = []\ngeographies = []\n',encoding="utf-8")
     (root/"AGENTS.md").write_text(agents_template(a.title,root),encoding="utf-8")
     for rel,content in [("questions.md","# Research questions\n\n尚未建立当前 Research Design。\n"),("source_map.md","# Source map\n\n此文件由 Source Attempt 与 Evidence 派生，不是独立事实源。\n"),("tasks.jsonl",""),("claims.jsonl",""),("evidence/cards.jsonl",""),("logs/runs.jsonl",""),("logs/source_attempts.jsonl",""),("memory/lessons.jsonl",""),("logs/change_log.md",f"# Change log\n\n- {utc_now()} topic created\n")]: (root/rel).write_text(content,encoding="utf-8")
@@ -72,7 +74,7 @@ def cmd_plan(a):
         else:
             try:design=template(topic_title(root,a.slug or root.name),a.questions,profile)
             except ValueError as e:raise SystemExit(str(e)) from e
-            atomic_write_json(design_path,design);operation="reset" if design_path.exists() else "created"
+            existed=design_path.exists();atomic_write_json(design_path,design);operation="reset" if existed else "created"
         check=validate_design(design,profile)
         if not check["valid"]:raise SystemExit("invalid current design: "+"; ".join(check["errors"]))
         atomic_write_json(design_path,design);(root/"questions.md").write_text(render_questions(design),encoding="utf-8");ids=[q["id"] for q in design["questions"] if q.get("status","open")=="open"];state.update(status="planned",open_questions=ids,next_actions=["replace placeholder questions" if operation!="synchronized" else "review synchronized design","validate current design","start baseline run" if not state.get("baseline_completed") else "start incremental run"]);atomic_write_json(root/"state.json",state);context=render_context(root,build_brief(root))
@@ -87,7 +89,10 @@ def cmd_reflect(a):
     root=topic_dir(a.slug)
     with lock(root):
         if read_json(root/"state.json",{}).get("active_run_id"):raise SystemExit("finish the active run before applying reflection")
-        value=json.loads(Path(a.file).read_text(encoding="utf-8"));outcome=apply_reflection(root,value)
+        value=json.loads(Path(a.file).read_text(encoding="utf-8"))
+        try:require_reflection_review(root,value)
+        except ValueError as e:raise SystemExit(str(e)) from e
+        outcome=apply_reflection(root,value)
     print(json.dumps(outcome,ensure_ascii=False,indent=2))
 def cmd_run_start(a):
     root=topic_dir(a.slug)
@@ -112,9 +117,24 @@ def cmd_record_usage(a):
 def cmd_ingest_worker(a):
     root=topic_dir(a.slug)
     with lock(root):
-        state=read_json(root/"state.json",{});profile=load_budgets()[state.get("budget_profile","standard")];remaining=report(state,profile)["remaining"]["evidence_cards"];result=json.loads(Path(a.file).read_text(encoding="utf-8"))
+        state=read_json(root/"state.json",{});profile=load_budgets()[state.get("budget_profile","standard")];result=json.loads(Path(a.file).read_text(encoding="utf-8"))
         if result.get("budget_profile")!=state.get("budget_profile"):raise SystemExit("worker budget_profile does not match topic budget_profile")
-        outcome=ingest_worker_result(root/"evidence/cards.jsonl",result,remaining);atomic_write_json(root/"state.json",apply_delta(state,profile,{"evidence_cards":outcome["accepted"]}))
+        used=result.get("budget_used",{})
+        try:usage_delta={"queries":int(used.get("search_queries",0)),"pages":int(used.get("source_pages",0))};preupdated=apply_delta(state,profile,usage_delta)
+        except (TypeError,ValueError,BudgetExceeded) as e:raise SystemExit(f"worker usage exceeds topic budget: {e}") from e
+        remaining=report(preupdated,profile)["remaining"]["evidence_cards"]
+        try:outcome=ingest_worker_result(root/"evidence/cards.jsonl",result,remaining);updated=apply_delta(preupdated,profile,{"evidence_cards":outcome["accepted"]})
+        except (ValueError,BudgetExceeded) as e:raise SystemExit(str(e)) from e
+        outcome["budget_delta"]={**usage_delta,"evidence_cards":outcome["accepted"]};outcome["budget_verification"]="worker_self_reported";atomic_write_json(root/"state.json",updated)
+    print(json.dumps(outcome,ensure_ascii=False,indent=2))
+def cmd_critic_save(a):
+    root=topic_dir(a.slug)
+    with lock(root):
+        state=read_json(root/"state.json",{});rid=state.get("active_run_id")
+        if not rid:raise SystemExit("critic review requires an active run")
+        value=json.loads(Path(a.file).read_text(encoding="utf-8"))
+        try:outcome=save_review(root,value,rid)
+        except ValueError as e:raise SystemExit(str(e)) from e
     print(json.dumps(outcome,ensure_ascii=False,indent=2))
 def cmd_claim_create(a):
     root=topic_dir(a.slug)
@@ -142,11 +162,15 @@ def cmd_run_finish(a):
     with lock(root):
         state=read_json(root/"state.json",{});rid=state.get("active_run_id")
         if not rid:raise SystemExit("no active run")
+        completion=None
+        if a.status=="complete":
+            completion=completion_gate(root,rid,SKILL_DIR)
+            if not completion["valid"]:raise SystemExit("completion gates failed: "+"; ".join(completion["errors"]))
         state.update(status=a.status,active_run_id=None,last_run_at=utc_now());atomic_write_json(root/"state.json",state)
         from lib.io_utils import append_jsonl
-        append_jsonl(root/"logs/runs.jsonl",[{"id":rid,"status":a.status,"finished_at":utc_now(),"note":a.note}])
+        append_jsonl(root/"logs/runs.jsonl",[{"id":rid,"status":a.status,"finished_at":utc_now(),"note":a.note,"completion_gates":completion}])
         with (root/"logs/change_log.md").open("a",encoding="utf-8") as h:h.write(f"- {utc_now()} {rid} finished: {a.status}"+(f" — {a.note}" if a.note else "")+"\n")
-    print(json.dumps({"topic":state.get("topic"),"run_id":rid,"status":a.status,"next_action":"create and apply a Critic-validated reflection"},ensure_ascii=False,indent=2))
+    print(json.dumps({"topic":state.get("topic"),"run_id":rid,"status":a.status,"completion_gates":completion,"next_action":"create and apply a Critic-linked reflection"},ensure_ascii=False,indent=2))
 def cmd_validate(a):
     root=topic_dir(a.slug);errors=[];warnings=[];seen=set();evidence=evidence_map(root);state=read_json(root/"state.json",{})
     for rel in ["topic.toml","state.json","AGENTS.md","context.md","questions.md","tasks.jsonl","claims.jsonl","evidence/cards.jsonl","memory/lessons.jsonl","logs/runs.jsonl","logs/source_attempts.jsonl"]:
@@ -197,6 +221,7 @@ def parser():
     x=add_topic(s,"run-start",cmd_run_start);x.add_argument("--mode",choices=["baseline","initial","incremental","deep-dive"],default="initial")
     x=add_topic(s,"record-usage",cmd_record_usage);x.add_argument("--queries",type=int,default=0);x.add_argument("--pages",type=int,default=0);x.add_argument("--evidence-cards",type=int,default=0);x.add_argument("--input-tokens",type=int,default=0);x.add_argument("--output-tokens",type=int,default=0);x.add_argument("--force",action="store_true")
     x=add_topic(s,"ingest-worker",cmd_ingest_worker);x.add_argument("--file",required=True)
+    x=add_topic(s,"critic-save",cmd_critic_save);x.add_argument("--file",required=True)
     x=add_topic(s,"claim-create",cmd_claim_create);x.add_argument("--text",required=True);x.add_argument("--confidence",type=float,default=.5);x.add_argument("--core",action="store_true")
     x=add_topic(s,"claim-link",cmd_claim_link);x.add_argument("--claim",required=True);x.add_argument("--evidence",required=True);x.add_argument("--stance",choices=["support","contradict","context"],required=True);x.add_argument("--strength",type=float,default=.5)
     x=add_topic(s,"claim-status",cmd_claim_status);x.add_argument("--claim",required=True);x.add_argument("--status",choices=["draft","supported","contested","rejected","unresolved"],required=True);x.add_argument("--reason",default="");x.add_argument("--approve-core",action="store_true")
