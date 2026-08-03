@@ -30,11 +30,17 @@ py -3.11 "$HOME\.agents\skills\deep-research\scripts\runtimectl.py" doctor --str
 $env:DEEP_RESEARCH_WORKSPACE_ROOT = 'D:\知识宇宙海\调研工作区'
 ```
 
+## Human-readable naming
+
+User-visible names follow the language of the topic. Chinese topics use a Chinese directory and Chinese report filename by default; stable Question, Evidence, Claim, Run, schema, and Agent identifiers remain ASCII. English product and project names remain unchanged.
+
+`topicctl.py` is the guarded entry point for topic creation and report initialization. It rejects a silent Chinese-title/English-directory mismatch and prevents reports from escaping the canonical topic workspace. Use `--allow-language-mismatch` only when the user explicitly requests a different-language directory.
+
 ## New topic
 
 ```powershell
 $SKILL = "$HOME\.agents\skills\deep-research"
-py -3.11 "$SKILL\scripts\researchctl.py" init-topic 'AI短剧市场研究' --budget standard
+py -3.11 "$SKILL\scripts\topicctl.py" init-topic 'AI短剧市场研究' --budget standard
 cd 'D:\知识宇宙海\调研工作区\AI短剧市场研究'
 codex
 ```
@@ -45,7 +51,10 @@ Inside the topic directory:
 py -3.11 "$SKILL\scripts\researchctl.py" plan --questions 5
 py -3.11 "$SKILL\scripts\researchctl.py" brief
 py -3.11 "$SKILL\scripts\researchctl.py" run-start --mode baseline
+py -3.11 "$SKILL\scripts\topicctl.py" report-init --type initial
 ```
+
+Do not initialize topic workspaces with `mkdir`, `New-Item`, or hand-written `topic.toml`/`state.json`. Do not create a second directory, junction, symlink, hard link, or top-level report copy to represent the same topic.
 
 After a validated run, finish it and apply a Critic-reviewed Reflection. This increments the research generation and stores only reusable research lessons. Topic facts continue to live exclusively in Claim/Evidence.
 
@@ -53,6 +62,12 @@ Existing workspaces migrate to format 2 with:
 
 ```powershell
 py -3.11 "$SKILL\scripts\releasectl.py" workspace-migrate <slug> --apply
+```
+
+Check legacy naming before continuing it:
+
+```powershell
+py -3.11 "$SKILL\scripts\topicctl.py" validate-naming <topic-directory>
 ```
 
 ## Free-quota search

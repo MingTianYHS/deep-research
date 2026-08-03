@@ -17,6 +17,7 @@ REQUIRED_SKILL_FILES = (
     "references/QUERY_CRAFT.md",
     "references/TOOL_ROUTING.md",
     "scripts/researchctl.py",
+    "scripts/topicctl.py",
     "scripts/runtimectl.py",
     "scripts/qualityctl.py",
     "scripts/evalctl.py",

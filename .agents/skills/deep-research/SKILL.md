@@ -27,10 +27,20 @@ Only the user-level layout is supported:
 
 Per-topic custom-Agent TOML files are deprecated. The optional `~/.agents/skills/web-access/` Skill remains the single authorized login/anti-bot fallback.
 
+## Topic workspace and naming invariants
+
+- One research topic has exactly one canonical writable topic workspace.
+- User-visible names follow the user's topic language. A Chinese topic uses a concise Chinese directory, title, and report filename by default. Stable Question, Evidence, Claim, Run, schema, CLI, and Agent identifiers remain ASCII.
+- Preserve English product, project, protocol, and proper names when they are the natural name of the topic.
+- Use `topicctl.py init-topic` for topic creation and `topicctl.py report-init` for report initialization. Do not initialize a topic with `mkdir`, `New-Item`, hand-written `topic.toml`, or hand-written `state.json`.
+- Do not represent one topic with a second directory, report copy, symlink, junction, or hard link.
+- Topic reports and audits stay inside `<topic>/reports/`. Use explicit export tooling for external copies.
+- A Chinese-title/English-directory mismatch is rejected unless the user explicitly requested it and `--allow-language-mismatch` is supplied.
+
 ## Create and enter a topic
 
 ```bash
-python ~/.agents/skills/deep-research/scripts/researchctl.py init-topic "Topic" --budget standard
+python ~/.agents/skills/deep-research/scripts/topicctl.py init-topic "主题名称" --budget standard
 cd "<printed workspace path>"
 codex
 ```
@@ -40,6 +50,7 @@ The generated `AGENTS.md` activates the main Codex session as the topic expert. 
 ```bash
 python ~/.agents/skills/deep-research/scripts/researchctl.py status
 python ~/.agents/skills/deep-research/scripts/researchctl.py brief
+python ~/.agents/skills/deep-research/scripts/topicctl.py report-init --type initial
 ```
 
 ## Authority and memory
@@ -76,9 +87,10 @@ python ~/.agents/skills/deep-research/scripts/researchctl.py brief --question q-
 5. Delegate one non-overlapping question per `topic_researcher`. Workers remain read-only and must return the complete Worker/Query/Source Attempt/Evidence contract.
 6. Run `research_critic` after the evidence wave. It checks worker and query integrity, entailment, source independence, versions, contradictions, scope, and lesson candidates.
 7. Use `research_synthesizer` only after Claim/Evidence review. It may not introduce new factual claims.
-8. The coordinator persists validated results, finishes the run, then applies a structured Critic-validated Reflection:
+8. The coordinator persists validated results, initializes the report through `topicctl.py`, finishes the run, then applies a structured Critic-validated Reflection:
 
 ```bash
+python ~/.agents/skills/deep-research/scripts/topicctl.py report-init --type initial
 python ~/.agents/skills/deep-research/scripts/researchctl.py run-finish --status complete
 python ~/.agents/skills/deep-research/scripts/researchctl.py reflect --file reflection.json
 ```
@@ -120,11 +132,12 @@ Follow `references/QUERY_CRAFT.md` for construction and stopping rules, and `ref
 8. `ingest-worker` repeats strict validation and cannot be bypassed.
 9. `context.md`, Lessons, reports, prior summaries, and query traces are not evidence.
 10. Stop at acceptance criteria, hard limits, or the second low-yield result after one strategy pivot.
+11. Do not bypass `topicctl.py` naming and path guards with direct filesystem writes or compatibility links.
 
 ## Workspace format 2
 
 ```text
-<topic>/
+<中文或自然语言主题名>/
 ├── AGENTS.md
 ├── topic.toml
 ├── state.json
@@ -138,7 +151,7 @@ Follow `references/QUERY_CRAFT.md` for construction and stopping rules, and `ref
 └── logs/
 ```
 
-Use `releasectl.py workspace-migrate <slug> --apply` for v1 workspaces. Legacy `AGENT.md` and per-topic Agent TOML files are reported as compatibility warnings.
+Use `releasectl.py workspace-migrate <slug> --apply` for v1 workspaces. Legacy `AGENT.md` and per-topic Agent TOML files are reported as compatibility warnings. Run `topicctl.py validate-naming <topic-directory>` before continuing a legacy differently named workspace.
 
 ## Quality gates
 
