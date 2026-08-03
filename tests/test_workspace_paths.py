@@ -7,7 +7,7 @@ import sys
 SCRIPT_DIR = Path(__file__).parents[1] / ".agents/skills/deep-research/scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from lib.workspace_paths import report_filename, safe_component, workspace_root
+from lib.workspace_paths import contains_cjk, is_within, report_filename, safe_component, topic_directory_name, validate_topic_naming, workspace_root
 
 
 def test_external_workspace_root(monkeypatch, tmp_path):
@@ -23,7 +23,26 @@ def test_default_workspace_root(monkeypatch, tmp_path):
 
 def test_chinese_topic_name_and_windows_safety():
     assert safe_component("中国AI市场：2026/趋势") == "中国AI市场-2026-趋势"
+    assert topic_directory_name("首次线下约会准备与注意事项") == "首次线下约会准备与注意事项"
+    assert contains_cjk("OpenAI Codex 配置研究")
     assert safe_component("CON") == "_CON"
+
+
+def test_chinese_title_rejects_silent_english_directory():
+    errors = validate_topic_naming("首次线下约会准备与注意事项", "first-date-prep")
+    assert errors
+    assert not validate_topic_naming("首次线下约会准备与注意事项", "first-date-prep", allow_language_mismatch=True)
+
+
+def test_english_product_topic_remains_valid():
+    assert not validate_topic_naming("deep-research", "deep-research")
+    assert not validate_topic_naming("OpenAI Codex 配置研究", "OpenAI-Codex-配置研究")
+
+
+def test_topic_artifact_path_boundary(tmp_path):
+    root = tmp_path / "主题"
+    assert is_within(root, root / "reports" / "报告.md")
+    assert not is_within(root, tmp_path / "reports" / "报告.md")
 
 
 def test_report_filename_uses_date_topic_and_type():
