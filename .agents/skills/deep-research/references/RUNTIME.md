@@ -24,6 +24,8 @@ python "$SKILL/scripts/researchctl.py" validate
 
 The slug remains accepted for remote operation. `brief` reuses current Research Design, open questions, contested/unresolved Claims, known URLs, and active Lessons. `context.md` is a bounded cache, not evidence.
 
+New Worker ingestion requires `worker_result_version: 2`, a unique `worker_result_id`, and the exact active `run_id`. The Worker question, overlap key, budget profile, and version anchor are checked against `plans/current-design.json`. Legacy Worker Result v1 remains readable by validation tools but cannot be persisted as new research output.
+
 A Reflection contains `run_id`, `summary`, `open_questions`, `next_actions`, and Critic-validated `lesson_candidates`. It increments `research_generation` but never changes Claim status automatically.
 
 Use `releasectl.py workspace-migrate <slug> --apply` for workspace format 2.
