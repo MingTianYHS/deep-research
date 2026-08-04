@@ -19,15 +19,22 @@ python "$SKILL/scripts/research.py" brief
 python "$SKILL/scripts/research.py" start --mode baseline
 python "$SKILL/scripts/research.py" status
 python "$SKILL/scripts/research.py" report --type initial
-python "$SKILL/scripts/research.py" finish --status complete
 python "$SKILL/scripts/research.py" validate
 ```
 
-The public `new` command intentionally has no destructive `--force` option. Chinese topics use Chinese human-readable directories by default. `report` rejects outputs outside the canonical topic workspace.
+`report` creates a report target; it does not make a Run complete. Between `start` and `finish`, the topic-expert coordinator must execute the Research Design, persist current-Run Worker Results and accepted Evidence, review Claim–Evidence, save an approved Critic Review, write a substantive report, and pass citation, Evidence quality, report rubric, and final Quote Audit gates.
+
+Only after those gates pass:
+
+```bash
+python "$SKILL/scripts/research.py" finish --status complete
+```
+
+Use `partial` or `failed` when completion evidence is unavailable. The public `new` command intentionally has no destructive `--force` option. Chinese topics use Chinese directories by default. An explicitly allowed language mismatch must repeat `--allow-language-mismatch` on later report and validation commands.
 
 ## Coordinator control plane
 
-The main topic-expert session may use low-level commands while executing the Skill contract:
+The main topic-expert session may use internal commands while executing the Skill contract:
 
 ```bash
 python "$SKILL/scripts/researchctl.py" ingest-worker --file worker-result.json
@@ -37,14 +44,10 @@ python "$SKILL/scripts/qualityctl.py" quality-report --require-gates
 python "$SKILL/scripts/evalctl.py" report-check --require-gates
 ```
 
-These are implementation controls, not separate user products. New user documentation must not instruct users to initialize topics or reports through `researchctl.py`.
+`researchctl.py init-topic` and `researchctl.py report-init` are no longer exposed. User-visible topic and report writes go through `research.py` and the guarded implementation.
 
 `brief` reuses the canonical Research Design, open questions, contested/unresolved Claims, known URLs, and active Lessons. `context.md` is a bounded cache, not evidence.
 
-New Worker ingestion requires `worker_result_version: 2`, a unique `worker_result_id`, and the exact active `run_id`. The Worker question, overlap key, budget profile, and version anchor are checked against `plans/current-design.json`. Worker-reported query/page usage and accepted Evidence are added exactly once because duplicate Worker IDs are rejected.
+Worker ingestion requires Worker Result v2, a unique Worker ID, the exact active Run ID, and matching question, overlap, budget, and version boundaries. An approved Critic Review belongs to one active Run. A Reflection updates generation, bounded context, open questions, next actions, and validated Lessons, but never changes Claim status automatically.
 
-An approved Critic Review belongs to one active Run. `complete` requires Worker and Evidence from that Run, an approved Critic Review, live Evidence quality gates, and a citation-valid report that passes the report rubric and final source-identity-frozen Quote Audit. `partial` and `failed` may close without these completion gates.
-
-A Reflection increments `research_generation` and updates bounded context and validated Lessons, but never changes Claim status automatically.
-
-Use `releasectl.py workspace-migrate <slug> --apply` only for workspace maintenance and migration.
+Use `releasectl.py workspace-migrate <slug> --apply` only for workspace maintenance.

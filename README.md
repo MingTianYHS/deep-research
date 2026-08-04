@@ -32,7 +32,7 @@ $env:DEEP_RESEARCH_WORKSPACE_ROOT = 'D:\知识宇宙海\调研工作区'
 
 ## One public workflow
 
-`research.py` is the documented user-facing entry point. The `*ctl.py` scripts are the internal control plane used by the topic-expert coordinator and maintainers.
+`research.py` is the user-facing entry point. The `*ctl.py` scripts are internal coordinator and maintainer controls.
 
 ```powershell
 $SKILL = "$HOME\.agents\skills\deep-research"
@@ -49,23 +49,31 @@ py -3.11 "$SKILL\scripts\research.py" brief
 py -3.11 "$SKILL\scripts\research.py" start --mode baseline
 py -3.11 "$SKILL\scripts\research.py" status
 py -3.11 "$SKILL\scripts\research.py" report --type initial
-py -3.11 "$SKILL\scripts\research.py" finish --status complete
 py -3.11 "$SKILL\scripts\research.py" validate
 ```
 
-The public `new` command intentionally has no destructive `--force` option. Topic creation and report initialization always pass through the guarded implementation.
+The topic-expert coordinator performs Worker research, Evidence ingestion, Claim review, Critic review, report writing, and all quality/audit gates between `start` and `finish`. `report` only creates the report target. It is not immediately followed by a successful complete finish.
+
+After all current-Run completion gates pass:
+
+```powershell
+py -3.11 "$SKILL\scripts\research.py" finish --status complete
+```
 
 ## Naming and workspace boundary
 
-- One research topic has exactly one canonical writable workspace.
+- One topic has exactly one canonical writable workspace.
 - Chinese topics use Chinese human-readable directories and report names by default.
 - Stable Question, Evidence, Claim, Run, schema, and Agent identifiers remain ASCII.
-- English product, project, protocol, and proper names remain unchanged when they are the natural name.
-- Reports stay inside the canonical topic workspace. External copies use explicit export tooling.
-- Do not initialize workspaces with `mkdir`, `New-Item`, or hand-written `topic.toml`/`state.json`.
+- English product, project, protocol, and proper names remain unchanged when natural.
+- Reports stay inside the canonical topic workspace; explicit export tooling creates external copies.
+- The public `new` command has no destructive `--force` option.
+- `researchctl.py init-topic` and `researchctl.py report-init` are not exposed.
+- Do not initialize workspaces with filesystem commands or hand-written state files.
 - Do not represent one topic with a second directory, report copy, symlink, junction, or hard link.
+- When a language mismatch is explicitly authorized at creation, repeat `--allow-language-mismatch` on report and validation commands.
 
-Existing workspaces migrate to format 2 with:
+Existing workspaces migrate with:
 
 ```powershell
 py -3.11 "$SKILL\scripts\releasectl.py" workspace-migrate <slug> --apply
@@ -73,18 +81,16 @@ py -3.11 "$SKILL\scripts\releasectl.py" workspace-migrate <slug> --apply
 
 ## Research lifecycle
 
-The coordinator executes the internal lifecycle behind the public workflow:
-
 1. Create or synchronize the canonical Research Design.
 2. Build a bounded baseline, incremental, or question Brief.
 3. Start a Run and delegate non-overlapping questions to `topic_researcher`.
 4. Validate Query → Source Attempt → Evidence lineage and ingest accepted Evidence.
 5. Materialize Claim–Evidence relations and run `research_critic`.
 6. Use `research_synthesizer` only after evidence and claim review.
-7. Verify citations, quality gates, report rubric, and final Quote Audit.
+7. Write the report and pass citations, Evidence quality, report rubric, and final Quote Audit.
 8. Finish the Run and apply a Critic-linked Reflection.
 
-Low-level commands such as Worker ingestion, Critic persistence, Quote Audit, and Reflection remain available to the coordinator, but they are not separate user products.
+Low-level Worker ingestion, Critic persistence, Quote Audit, and Reflection remain internal controls, not separate user products.
 
 ## Search policy
 
