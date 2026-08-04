@@ -28,18 +28,26 @@ def test_chinese_topic_rejects_silent_english_directory(monkeypatch):
 
 def test_external_report_output_is_rejected(monkeypatch, tmp_path):
     root = tmp_path / "首次线下约会准备与注意事项"
-    root.mkdir()
-    (root / "topic.toml").write_text('title="首次线下约会准备与注意事项"\n', encoding="utf-8")
+    root.mkdir(); (root / "topic.toml").write_text('title="首次线下约会准备与注意事项"\n', encoding="utf-8")
     module.researchctl.WORKSPACE_ROOT = tmp_path
     monkeypatch.setattr(module.researchctl, "cmd_report_init", lambda args: pytest.fail("must not create report"))
     with pytest.raises(SystemExit, match="must stay inside"):
-        module.cmd_report(argparse.Namespace(topic=root.name, type="initial", title=None, output=str(tmp_path / "reports" / "first-date-prep.md")))
+        module.cmd_report(argparse.Namespace(topic=root.name, type="initial", title=None, output=str(tmp_path / "reports" / "first-date-prep.md"), allow_language_mismatch=False))
+
+
+def test_explicit_language_mismatch_can_continue_to_report(monkeypatch, tmp_path):
+    root = tmp_path / "first-date-prep"
+    root.mkdir(); (root / "topic.toml").write_text('title="首次线下约会准备与注意事项"\n', encoding="utf-8")
+    module.researchctl.WORKSPACE_ROOT = tmp_path
+    captured = {}
+    monkeypatch.setattr(module.researchctl, "cmd_report_init", lambda args: captured.update(vars(args)))
+    module.cmd_report(argparse.Namespace(topic=root.name, type="initial", title=None, output=None, allow_language_mismatch=True))
+    assert captured["slug"] == str(root.resolve())
 
 
 def test_naming_validation_reports_mismatch(tmp_path, capsys):
     root = tmp_path / "first-date-prep"
-    root.mkdir()
-    (root / "topic.toml").write_text('title="首次线下约会准备与注意事项"\n', encoding="utf-8")
+    root.mkdir(); (root / "topic.toml").write_text('title="首次线下约会准备与注意事项"\n', encoding="utf-8")
     module.researchctl.WORKSPACE_ROOT = tmp_path
     with pytest.raises(SystemExit):
         module.cmd_validate(argparse.Namespace(topic=root.name, allow_language_mismatch=False))

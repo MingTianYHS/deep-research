@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guarded user-facing topic creation and report entry points."""
+"""Guarded topic creation, naming validation, and report implementation."""
 from __future__ import annotations
 
 import argparse
@@ -29,7 +29,11 @@ def cmd_report(args: argparse.Namespace) -> None:
     except FileNotFoundError as exc:
         raise SystemExit(str(exc)) from exc
     subject = topic_title(root, root.name)
-    errors = validate_topic_naming(subject, root.name)
+    errors = validate_topic_naming(
+        subject,
+        root.name,
+        allow_language_mismatch=getattr(args, "allow_language_mismatch", False),
+    )
     if errors:
         raise SystemExit("invalid topic naming: " + "; ".join(errors))
     if args.output:
@@ -67,6 +71,7 @@ def parser() -> argparse.ArgumentParser:
     report.add_argument("--type", choices=["initial", "update", "final"], default="initial")
     report.add_argument("--title")
     report.add_argument("--output")
+    report.add_argument("--allow-language-mismatch", action="store_true")
     report.set_defaults(func=cmd_report)
     validate = sub.add_parser("validate-naming")
     validate.add_argument("topic", nargs="?")
