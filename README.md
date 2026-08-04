@@ -1,18 +1,18 @@
 # deep-research
 
-A lightweight citation-first deep-research Skill for OpenAI Codex.
+A dependency-light, citation-first deep-research Skill for OpenAI Codex.
 
 **Release candidate:** `0.9.0rc1` · Python 3.11+
 
-## Topic expert model
+## What it does
 
-Each topic workspace is a persistent Codex expert context. Start Codex from that directory; its `AGENTS.md` makes the main session the topic-expert coordinator. The coordinator owns planning, approvals, state, and writes and delegates only to three global read-only roles:
+`deep-research` turns one complex question into one persistent, auditable topic workspace. Codex coordinates planning and writes; three fixed read-only roles perform bounded research, adversarial review, and evidence-grounded synthesis:
 
 - `topic_researcher`
 - `research_critic`
 - `research_synthesizer`
 
-Per-topic `topic-<slug>.toml` agents are deprecated. Expertise compounds through existing Claim/Evidence, a bounded rebuildable `context.md`, and Critic-validated `memory/lessons.jsonl`—not by changing model weights or duplicating a Wiki/database.
+The durable knowledge model is `Source Attempt → Evidence Card → Claim–Evidence`. Reports are time-point outputs. `context.md` is a bounded rebuildable cache, and `memory/lessons.jsonl` stores only Critic-validated research lessons.
 
 ## Install
 
@@ -30,17 +30,13 @@ py -3.11 "$HOME\.agents\skills\deep-research\scripts\runtimectl.py" doctor --str
 $env:DEEP_RESEARCH_WORKSPACE_ROOT = 'D:\知识宇宙海\调研工作区'
 ```
 
-## Human-readable naming
+## One public workflow
 
-User-visible names follow the language of the topic. Chinese topics use a Chinese directory and Chinese report filename by default; stable Question, Evidence, Claim, Run, schema, and Agent identifiers remain ASCII. English product and project names remain unchanged.
-
-`topicctl.py` is the guarded entry point for topic creation and report initialization. It rejects a silent Chinese-title/English-directory mismatch and prevents reports from escaping the canonical topic workspace. Use `--allow-language-mismatch` only when the user explicitly requests a different-language directory.
-
-## New topic
+`research.py` is the documented user-facing entry point. The `*ctl.py` scripts are the internal control plane used by the topic-expert coordinator and maintainers.
 
 ```powershell
 $SKILL = "$HOME\.agents\skills\deep-research"
-py -3.11 "$SKILL\scripts\topicctl.py" init-topic 'AI短剧市场研究' --budget standard
+py -3.11 "$SKILL\scripts\research.py" new 'AI短剧市场研究' --budget standard
 cd 'D:\知识宇宙海\调研工作区\AI短剧市场研究'
 codex
 ```
@@ -48,15 +44,26 @@ codex
 Inside the topic directory:
 
 ```powershell
-py -3.11 "$SKILL\scripts\researchctl.py" plan --questions 5
-py -3.11 "$SKILL\scripts\researchctl.py" brief
-py -3.11 "$SKILL\scripts\researchctl.py" run-start --mode baseline
-py -3.11 "$SKILL\scripts\topicctl.py" report-init --type initial
+py -3.11 "$SKILL\scripts\research.py" plan --questions 5
+py -3.11 "$SKILL\scripts\research.py" brief
+py -3.11 "$SKILL\scripts\research.py" start --mode baseline
+py -3.11 "$SKILL\scripts\research.py" status
+py -3.11 "$SKILL\scripts\research.py" report --type initial
+py -3.11 "$SKILL\scripts\research.py" finish --status complete
+py -3.11 "$SKILL\scripts\research.py" validate
 ```
 
-Do not initialize topic workspaces with `mkdir`, `New-Item`, or hand-written `topic.toml`/`state.json`. Do not create a second directory, junction, symlink, hard link, or top-level report copy to represent the same topic.
+The public `new` command intentionally has no destructive `--force` option. Topic creation and report initialization always pass through the guarded implementation.
 
-After a validated run, finish it and apply a Critic-reviewed Reflection. This increments the research generation and stores only reusable research lessons. Topic facts continue to live exclusively in Claim/Evidence.
+## Naming and workspace boundary
+
+- One research topic has exactly one canonical writable workspace.
+- Chinese topics use Chinese human-readable directories and report names by default.
+- Stable Question, Evidence, Claim, Run, schema, and Agent identifiers remain ASCII.
+- English product, project, protocol, and proper names remain unchanged when they are the natural name.
+- Reports stay inside the canonical topic workspace. External copies use explicit export tooling.
+- Do not initialize workspaces with `mkdir`, `New-Item`, or hand-written `topic.toml`/`state.json`.
+- Do not represent one topic with a second directory, report copy, symlink, junction, or hard link.
 
 Existing workspaces migrate to format 2 with:
 
@@ -64,16 +71,23 @@ Existing workspaces migrate to format 2 with:
 py -3.11 "$SKILL\scripts\releasectl.py" workspace-migrate <slug> --apply
 ```
 
-Check legacy naming before continuing it:
+## Research lifecycle
 
-```powershell
-py -3.11 "$SKILL\scripts\topicctl.py" validate-naming <topic-directory>
-```
+The coordinator executes the internal lifecycle behind the public workflow:
 
-## Free-quota search
+1. Create or synchronize the canonical Research Design.
+2. Build a bounded baseline, incremental, or question Brief.
+3. Start a Run and delegate non-overlapping questions to `topic_researcher`.
+4. Validate Query → Source Attempt → Evidence lineage and ingest accepted Evidence.
+5. Materialize Claim–Evidence relations and run `research_critic`.
+6. Use `research_synthesizer` only after evidence and claim review.
+7. Verify citations, quality gates, report rubric, and final Quote Audit.
+8. Finish the Run and apply a Critic-linked Reflection.
 
-The default registry enables native web, Tavily, Exa, Jina, and Firecrawl without permitting paid overage. Workers select one provider per query: native web for ordinary and official discovery, Tavily for current web/news and structured extraction, Exa for semantic discovery, GitHub tools for repository evidence, and Firecrawl only as a quota-bounded dynamic-page or research-index fallback.
+Low-level commands such as Worker ingestion, Critic persistence, Quote Audit, and Reflection remain available to the coordinator, but they are not separate user products.
 
-Queries use a bounded ladder: broad discovery, `site:` authority targeting, exact-title or identifier verification, original-document lookup, disconfirming search, and a material cross-language check. Quota exhaustion falls back to another free route. The Skill never rotates multiple accounts or keys to evade provider limits, and credentials must stay outside the repository and topic workspaces.
+## Search policy
 
-The project remains standard-library based: no scheduler, daemon, LangGraph, memory service, vector database, or heavyweight provider SDK.
+The default registry enables native web, Tavily, Exa, Jina, and Firecrawl without paid overage. Each query uses one provider. Queries follow a bounded ladder: discovery, authority targeting, exact verification, disconfirming search, and a material cross-language check. One low-yield strategy pivot is allowed; a second low-yield result stops the route and becomes an explicit Gap.
+
+Search results and snippets are discovery aids, never Evidence. Credentials stay outside the repository and topic workspaces. The project remains standard-library based: no scheduler, daemon, LangGraph, memory service, vector database, or heavyweight provider SDK.
