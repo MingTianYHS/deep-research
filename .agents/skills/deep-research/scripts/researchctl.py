@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standard-library control plane for the Codex deep-research skill."""
+"""Internal standard-library control plane for the Codex deep-research skill."""
 from __future__ import annotations
 import argparse,json,math,re,tomllib,unicodedata,uuid
 from datetime import datetime,timezone
@@ -38,7 +38,7 @@ def agents_template(title:str,root:Path)->str:
 
 1. 加载用户级 `deep-research` Skill。
 2. 读取 `topic.toml`、`state.json` 和 `context.md`。
-3. 运行 `researchctl.py brief` 构建有界上下文。
+3. 运行 `research.py brief` 构建有界上下文。
 4. 只在当前问题需要时读取相关 Claim、Evidence 和 Lessons；不要加载全部历史。
 
 ## 冷启动
@@ -194,7 +194,7 @@ def cmd_validate(a):
         design=read_json(design_path,{});check=validate_design(design,state.get("budget_profile","standard"));errors += [f"design: {x}" for x in check["errors"]];warnings += [f"design: {x}" for x in check["warnings"]]
         ids=[q.get("id") for q in design.get("questions",[]) if q.get("status","open")=="open"]
         if ids!=state.get("open_questions",[]):errors.append("state.open_questions differs from current design")
-        if (root/"questions.md").exists() and (root/"questions.md").read_text(encoding="utf-8")!=render_questions(design):errors.append("questions.md is stale; run researchctl.py plan to synchronize it")
+        if (root/"questions.md").exists() and (root/"questions.md").read_text(encoding="utf-8")!=render_questions(design):errors.append("questions.md is stale; run research.py plan to synchronize it")
     if (root/"context.md").exists() and len((root/"context.md").read_text(encoding="utf-8"))>MAX_CONTEXT_CHARS:errors.append("context.md exceeds bounded context limit")
     old_agent=codex_home()/"agents"/f"topic-{root.name}.toml"
     if old_agent.exists():warnings.append(f"deprecated per-topic Agent exists: {old_agent}")
@@ -212,8 +212,7 @@ def cmd_estimate(a):
 def add_topic(sub,name,func):
     x=sub.add_parser(name);x.add_argument("slug",nargs="?");x.set_defaults(func=func);return x
 def parser():
-    p=argparse.ArgumentParser(prog="researchctl");s=p.add_subparsers(dest="command",required=True)
-    x=s.add_parser("init-topic");x.add_argument("title");x.add_argument("--slug");x.add_argument("--budget",choices=["lite","standard","deep"],default="standard");x.add_argument("--install-agent",action="store_true",help="deprecated compatibility flag");x.add_argument("--force",action="store_true");x.set_defaults(func=cmd_init)
+    p=argparse.ArgumentParser(prog="researchctl",description="Internal coordinator control plane; use research.py for user workflow.");s=p.add_subparsers(dest="command",required=True)
     x=add_topic(s,"plan",cmd_plan);x.add_argument("--questions",type=int,default=5,choices=range(1,9));x.add_argument("--force",action="store_true",help="replace the current design instead of synchronizing it")
     x=add_topic(s,"incremental-plan",cmd_incremental_plan);x.add_argument("--question")
     x=add_topic(s,"brief",cmd_brief);x.add_argument("--question");x.add_argument("--output")
@@ -226,7 +225,6 @@ def parser():
     x=add_topic(s,"claim-link",cmd_claim_link);x.add_argument("--claim",required=True);x.add_argument("--evidence",required=True);x.add_argument("--stance",choices=["support","contradict","context"],required=True);x.add_argument("--strength",type=float,default=.5)
     x=add_topic(s,"claim-status",cmd_claim_status);x.add_argument("--claim",required=True);x.add_argument("--status",choices=["draft","supported","contested","rejected","unresolved"],required=True);x.add_argument("--reason",default="");x.add_argument("--approve-core",action="store_true")
     x=add_topic(s,"claims",cmd_claims);x.add_argument("--status")
-    x=add_topic(s,"report-init",cmd_report_init);x.add_argument("--type",choices=["initial","update","final"],default="initial");x.add_argument("--title");x.add_argument("--output")
     x=add_topic(s,"verify-citations",cmd_verify_citations);x.add_argument("--report",required=True)
     x=add_topic(s,"run-finish",cmd_run_finish);x.add_argument("--status",choices=["complete","partial","failed"],default="complete");x.add_argument("--note",default="")
     add_topic(s,"validate",cmd_validate);add_topic(s,"status",cmd_status);add_topic(s,"budget",cmd_budget)

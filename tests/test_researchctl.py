@@ -15,3 +15,5 @@ def test_plan_uses_one_canonical_design_and_syncs_without_overwrite(tmp_path):
 def test_lite_plan_rejects_more_than_four_questions(tmp_path):
     init(module,tmp_path);args=type("A",(),{"slug":"topic","questions":5,"force":False})();
     with pytest.raises(SystemExit,match="allows 1-4"):module.cmd_plan(args)
+def test_legacy_cli_does_not_expose_guarded_writes():
+    root=module.parser();subparsers=next(action for action in root._actions if action.dest=="command");assert "init-topic" not in subparsers.choices;assert "report-init" not in subparsers.choices

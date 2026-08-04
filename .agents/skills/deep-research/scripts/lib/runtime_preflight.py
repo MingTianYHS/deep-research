@@ -16,6 +16,7 @@ REQUIRED_SKILL_FILES = (
     "config/report_rubric.toml",
     "references/QUERY_CRAFT.md",
     "references/TOOL_ROUTING.md",
+    "scripts/research.py",
     "scripts/researchctl.py",
     "scripts/topicctl.py",
     "scripts/runtimectl.py",

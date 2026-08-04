@@ -1,34 +1,53 @@
 # Runtime commands
 
-## New topic
+## Public workflow
+
+`research.py` is the single documented user-facing entry point. It routes topic creation and report initialization through the guarded naming and workspace-boundary implementation. Low-level `*ctl.py` commands are an internal control plane for the topic-expert coordinator and maintainers.
 
 ```bash
 SKILL=~/.agents/skills/deep-research
-python "$SKILL/scripts/researchctl.py" init-topic "Topic" --budget standard
+python "$SKILL/scripts/research.py" new "主题名称" --budget standard
 cd "<printed workspace path>"
 codex
 ```
 
-## From inside a topic directory
+From inside a topic directory:
 
 ```bash
-python "$SKILL/scripts/researchctl.py" status
-python "$SKILL/scripts/researchctl.py" plan --questions 5
-python "$SKILL/scripts/researchctl.py" brief
-python "$SKILL/scripts/researchctl.py" run-start --mode baseline
-python "$SKILL/scripts/researchctl.py" ingest-worker --file worker-result.json
-python "$SKILL/scripts/researchctl.py" critic-save --file critic-review.json
-python "$SKILL/scripts/researchctl.py" run-finish --status complete
-python "$SKILL/scripts/researchctl.py" reflect --file reflection.json
-python "$SKILL/scripts/researchctl.py" validate
+python "$SKILL/scripts/research.py" plan --questions 5
+python "$SKILL/scripts/research.py" brief
+python "$SKILL/scripts/research.py" start --mode baseline
+python "$SKILL/scripts/research.py" status
+python "$SKILL/scripts/research.py" report --type initial
+python "$SKILL/scripts/research.py" validate
 ```
 
-The slug remains accepted for remote operation. `brief` reuses current Research Design, open questions, contested/unresolved Claims, known URLs, and active Lessons. `context.md` is a bounded cache, not evidence.
+`report` creates a report target; it does not make a Run complete. Between `start` and `finish`, the topic-expert coordinator must execute the Research Design, persist current-Run Worker Results and accepted Evidence, review Claim–Evidence, save an approved Critic Review, write a substantive report, and pass citation, Evidence quality, report rubric, and final Quote Audit gates.
 
-New Worker ingestion requires `worker_result_version: 2`, a unique `worker_result_id`, and the exact active `run_id`. The Worker question, overlap key, budget profile, and version anchor are checked against `plans/current-design.json`. Legacy Worker Result v1 remains readable by validation tools but cannot be persisted as new research output. Worker-reported query/page usage and accepted Evidence are added to the topic budget exactly once because duplicate Worker IDs are rejected.
+Only after those gates pass:
 
-An approved Critic Review is saved under `logs/critic_reviews/` and belongs to one active Run. `complete` requires a Worker and accepted Evidence from that Run, an approved Critic Review, live Evidence quality gates, and a citation-valid report that passes the report rubric and a final source-identity-frozen Quote Audit. `partial` and `failed` may still close without these completion gates.
+```bash
+python "$SKILL/scripts/research.py" finish --status complete
+```
 
-A Reflection contains `run_id`, `critic_review_id`, `summary`, `open_questions`, `next_actions`, and Critic-validated `lesson_candidates`. The linked approved Critic Review must belong to the same Run. Reflection increments `research_generation` but never changes Claim status automatically.
+Use `partial` or `failed` when completion evidence is unavailable. The public `new` command intentionally has no destructive `--force` option. Chinese topics use Chinese directories by default. An explicitly allowed language mismatch must repeat `--allow-language-mismatch` on later report and validation commands.
 
-Use `releasectl.py workspace-migrate <slug> --apply` for workspace format 2.
+## Coordinator control plane
+
+The main topic-expert session may use internal commands while executing the Skill contract:
+
+```bash
+python "$SKILL/scripts/researchctl.py" ingest-worker --file worker-result.json
+python "$SKILL/scripts/researchctl.py" critic-save --file critic-review.json
+python "$SKILL/scripts/researchctl.py" reflect --file reflection.json
+python "$SKILL/scripts/qualityctl.py" quality-report --require-gates
+python "$SKILL/scripts/evalctl.py" report-check --require-gates
+```
+
+`researchctl.py init-topic` and `researchctl.py report-init` are no longer exposed. User-visible topic and report writes go through `research.py` and the guarded implementation.
+
+`brief` reuses the canonical Research Design, open questions, contested/unresolved Claims, known URLs, and active Lessons. `context.md` is a bounded cache, not evidence.
+
+Worker ingestion requires Worker Result v2, a unique Worker ID, the exact active Run ID, and matching question, overlap, budget, and version boundaries. An approved Critic Review belongs to one active Run. A Reflection updates generation, bounded context, open questions, next actions, and validated Lessons, but never changes Claim status automatically.
+
+Use `releasectl.py workspace-migrate <slug> --apply` only for workspace maintenance.
