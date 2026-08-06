@@ -2,18 +2,28 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .agent_contracts import (
+    build_critic_assignment,
+    build_researcher_assignment,
+    build_synthesis_assignment,
+)
 from .audit import validate_audit
 from .citations import CITATION_RE
 from .claims import materialize
 from .completion import completion_gate
-from .critic_reviews import approved_reviews_for_run
+from .critic_reviews import (
+    approved_reviews_for_run,
+    latest_review_for_run,
+    review_is_current,
+)
 from .io_utils import iter_jsonl, read_json
 from .research_design import validate_design
 
-WORKFLOW_SCHEMA_VERSION = 1
+WORKFLOW_SCHEMA_VERSION = 2
 REPORT_TODO_RE = re.compile(r"TODO|待补充|待填写|待判定|pending", re.IGNORECASE)
 
 
@@ -56,23 +66,17 @@ def _unfinished_reflection(root: Path) -> str | None:
     return None
 
 
-def _assignment(question: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "question_id": question.get("id"),
-        "question": question.get("question"),
-        "decision_relevance": question.get("decision_relevance"),
-        "dependencies": question.get("dependencies", []),
-        "overlap_key": question.get("overlap_key"),
-        "preferred_source_types": question.get("preferred_source_types", []),
-        "acceptance_criteria": question.get("acceptance_criteria", []),
-        "disconfirming_query": question.get("disconfirming_query"),
-        "version_sensitive": bool(question.get("version_sensitive")),
-        "target_version": question.get("target_version"),
-        "target_commit": question.get("target_commit"),
-        "worker_budget_profile": question.get(
-            "worker_budget_profile", "standard"
-        ),
-    }
+def _run_started_timestamp(root: Path, run_id: str) -> float | None:
+    for _, event in iter_jsonl(root / "logs/runs.jsonl"):
+        if event.get("id") != run_id or not event.get("started_at"):
+            continue
+        try:
+            return datetime.fromisoformat(
+                str(event["started_at"]).replace("Z", "+00:00")
+            ).timestamp()
+        except ValueError:
+            return None
+    return None
 
 
 def _result(
@@ -103,8 +107,10 @@ def _result(
         "progress": progress or {},
         "coordinator_instruction": (
             "Execute next_action in the Codex coordinator. Do not ask the user to run "
-            "internal controllers. Ask the user only when requires_user_input is true, "
-            "scope is materially ambiguous, or an external side effect needs approval."
+            "internal controllers. Do not assume subagents inherit the parent Skill; "
+            "send the returned versioned assignment unchanged. Ask the user only when "
+            "requires_user_input is true, scope is materially ambiguous, or an external "
+            "side effect needs approval."
         ),
     }
 
@@ -138,7 +144,7 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
     if not active_run_id:
         unreflected = _unfinished_reflection(root)
         if unreflected:
-            approved = approved_reviews_for_run(root, unreflected)
+            approved = approved_reviews_for_run(root, unreflected, current_only=False)
             if not approved:
                 return _result(
                     root,
@@ -173,6 +179,7 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
         for item in design.get("questions", [])
         if isinstance(item, dict) and item.get("status", "open") == "open"
     ]
+    questions_by_id = {str(item.get("id")): item for item in questions}
     workers = _workers(root, active_run_id)
     completed_questions = {
         str(worker.get("question_id"))
@@ -216,13 +223,22 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
                 progress=progress,
             )
         retry = any(str(item.get("id")) in attempted_questions for item in ready)
+        assignments = [
+            build_researcher_assignment(
+                root,
+                active_run_id,
+                item,
+                skill_dir / "config/budgets.toml",
+            )
+            for item in ready
+        ]
         return _result(
             root,
             state,
             "worker_research",
             "redelegate_incomplete_questions" if retry else "delegate_open_questions",
             agent="topic_researcher",
-            assignments=[_assignment(item) for item in ready],
+            assignments=assignments,
             progress=progress,
         )
 
@@ -264,15 +280,84 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
         )
 
     approved_reviews = approved_reviews_for_run(root, active_run_id)
+    latest_review = latest_review_for_run(root, active_run_id)
     if not approved_reviews:
+        previous_id = latest_review.get("id") if latest_review else None
+        if latest_review and latest_review.get("status") == "changes_required":
+            if review_is_current(root, latest_review, active_run_id):
+                remediation_assignments: list[dict[str, Any]] = []
+                missing_questions: list[str] = []
+                for targeted in latest_review.get("targeted_searches", []):
+                    question_id = str(targeted.get("question_id", ""))
+                    question = questions_by_id.get(question_id)
+                    if not question:
+                        missing_questions.append(question_id)
+                        continue
+                    remediation_assignments.append(
+                        build_researcher_assignment(
+                            root,
+                            active_run_id,
+                            question,
+                            skill_dir / "config/budgets.toml",
+                            remediation={
+                                "critic_review_id": latest_review.get("id"),
+                                **targeted,
+                            },
+                        )
+                    )
+                if remediation_assignments:
+                    return _result(
+                        root,
+                        state,
+                        "critic_remediation",
+                        "delegate_targeted_searches",
+                        agent="topic_researcher",
+                        assignments=remediation_assignments,
+                        blockers=[
+                            f"Unknown targeted-search question IDs: {missing_questions}"
+                        ]
+                        if missing_questions
+                        else [],
+                        progress={
+                            **progress,
+                            "critic_review_id": previous_id,
+                            "targeted_searches": len(remediation_assignments),
+                        },
+                    )
+                return _result(
+                    root,
+                    state,
+                    "critic_remediation",
+                    "resolve_critic_findings_without_search",
+                    blockers=[
+                        item.get("required_action", "Resolve Critic finding")
+                        for item in latest_review.get("findings", [])
+                        if isinstance(item, dict)
+                    ],
+                    progress={**progress, "critic_review_id": previous_id},
+                )
+            return _result(
+                root,
+                state,
+                "critic_recheck",
+                "invoke_research_critic",
+                agent="research_critic",
+                assignments=[
+                    build_critic_assignment(root, active_run_id, previous_id)
+                ],
+                progress={**progress, "previous_critic_review_id": previous_id},
+            )
         return _result(
             root,
             state,
-            "critic_review",
+            "critic_recheck" if latest_review else "critic_review",
             "invoke_research_critic",
             agent="research_critic",
-            command="researchctl.py critic-save --file critic-review.json",
-            progress=progress,
+            assignments=[build_critic_assignment(root, active_run_id, previous_id)],
+            blockers=["The previous approved Critic Review is stale."]
+            if latest_review and latest_review.get("status") in {"approved", "approved_with_findings"}
+            else [],
+            progress={**progress, "previous_critic_review_id": previous_id},
         )
 
     audits: list[tuple[Path, dict[str, Any]]] = []
@@ -281,8 +366,13 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
         if audit.get("run_id") == active_run_id:
             audits.append((audit_path, audit))
     if not audits:
+        started = _run_started_timestamp(root, active_run_id)
         reports = sorted(
-            (root / "reports").glob("*.md"),
+            [
+                path
+                for path in (root / "reports").glob("*.md")
+                if started is None or path.stat().st_mtime >= started - 2
+            ],
             key=lambda path: path.stat().st_mtime,
             reverse=True,
         )
@@ -290,9 +380,8 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
         for path in reports:
             text = path.read_text(encoding="utf-8")
             cited = set(CITATION_RE.findall(text))
-            if (
-                not REPORT_TODO_RE.search(text)
-                and bool(cited & accepted_evidence_ids)
+            if not REPORT_TODO_RE.search(text) and bool(
+                cited & accepted_evidence_ids
             ):
                 completed_reports.append(path)
         if completed_reports:
@@ -312,23 +401,32 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
                     ),
                 },
             )
+        if not reports:
+            return _result(
+                root,
+                state,
+                "synthesis",
+                "create_report_scaffold",
+                command="research.py report --type final",
+                progress=progress,
+            )
+        report = reports[0]
         return _result(
             root,
             state,
             "synthesis",
-            "invoke_synthesizer_and_write_report",
+            "invoke_research_synthesizer",
             agent="research_synthesizer",
-            command="research.py report --type final",
+            command="agentctl.py synthesis-save --file synthesis-result.json",
+            assignments=[
+                build_synthesis_assignment(
+                    root, active_run_id, report, approved_reviews[-1]
+                )
+            ],
             blockers=[
-                "No substantive report without TODO/pending markers and with at least "
-                "one current-run Evidence citation is ready for audit."
-            ]
-            if reports
-            else [],
-            progress={
-                **progress,
-                "draft_reports": [str(path) for path in reports],
-            },
+                "Synthesizer must return SynthesisResult v1 and may not search."
+            ],
+            progress={**progress, "report": str(report)},
         )
 
     valid_final_audits = [

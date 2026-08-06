@@ -117,12 +117,16 @@ def _topic_language(root: Path) -> str:
 
 
 def build_synthesis_assignment(
-    root: Path, run_id: str, report_path: Path
+    root: Path,
+    run_id: str,
+    report_path: Path,
+    review: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    reviews = approved_reviews_for_run(root, run_id)
-    if not reviews:
-        raise ValueError("synthesis requires a current approved Critic Review")
-    review = reviews[-1]
+    if review is None:
+        reviews = approved_reviews_for_run(root, run_id)
+        if not reviews:
+            raise ValueError("synthesis requires a current approved Critic Review")
+        review = reviews[-1]
     review_snapshot = build_review_snapshot(root, run_id)
     synthesis_snapshot = {
         **review_snapshot,
@@ -201,25 +205,32 @@ def validate_synthesis_result(
             "critic_review_id": review_id,
             "critic_review_sha256": canonical_sha256(review),
         }
+    supplied = value.get("input_snapshot")
     if expected_snapshot is not None and not snapshot_matches(
-        value.get("input_snapshot"), expected_snapshot
+        supplied, expected_snapshot
     ):
-        # snapshot_matches intentionally checks the shared review snapshot fields.
         errors.append("synthesis input snapshot does not match current reviewed state")
     if expected_snapshot is not None:
-        supplied = value.get("input_snapshot")
         if not isinstance(supplied, dict) or supplied.get(
             "critic_review_sha256"
         ) != expected_snapshot.get("critic_review_sha256"):
             errors.append("synthesis critic review snapshot hash does not match")
+        if not isinstance(supplied, dict) or supplied.get(
+            "critic_review_id"
+        ) != review_id:
+            errors.append("synthesis critic_review_id snapshot does not match")
     allowed_claims = set(current["claim_ids"])
     allowed_evidence = set(current["evidence_ids"])
-    used_claims = set(value.get("claim_ids_used", [])) if isinstance(
-        value.get("claim_ids_used"), list
-    ) else set()
-    used_evidence = set(value.get("evidence_ids_used", [])) if isinstance(
-        value.get("evidence_ids_used"), list
-    ) else set()
+    used_claims = (
+        set(value.get("claim_ids_used", []))
+        if isinstance(value.get("claim_ids_used"), list)
+        else set()
+    )
+    used_evidence = (
+        set(value.get("evidence_ids_used", []))
+        if isinstance(value.get("evidence_ids_used"), list)
+        else set()
+    )
     if not used_claims <= allowed_claims:
         errors.append("synthesis used Claims outside the reviewed snapshot")
     if not used_evidence <= allowed_evidence:
