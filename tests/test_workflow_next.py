@@ -5,6 +5,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parents[1] / ".agents/skills/deep-research/scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
+import lib.workflow as workflow
 from lib.workflow import derive_workflow
 
 
@@ -109,3 +110,24 @@ def test_next_blocks_unsafe_reflection_without_critic(tmp_path):
     result = derive_workflow(root, tmp_path / "skill")
     assert result["phase"] == "reflection_blocked"
     assert result["progress"]["run_id"] == "run-finished"
+
+
+def test_next_initializes_audit_after_substantive_report(monkeypatch, tmp_path):
+    root = topic(tmp_path, active_run_id="run-current")
+    value = design()
+    value["questions"][0]["status"] = "closed"
+    write_json(root / "plans/current-design.json", value)
+    monkeypatch.setattr(
+        workflow,
+        "approved_reviews_for_run",
+        lambda _root, _run: [{"id": "critic-1", "status": "approved"}],
+    )
+    report = root / "reports/最终报告.md"
+    report.write_text(
+        "---\ntitle: 最终报告\nstatus: complete\n---\n\n## 核心结论\n\n已完成报告。",
+        encoding="utf-8",
+    )
+    result = derive_workflow(root, tmp_path / "skill")
+    assert result["phase"] == "report_audit"
+    assert result["next_action"] == "initialize_quote_audit"
+    assert str(report) in result["command"]

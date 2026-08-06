@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from .io_utils import iter_jsonl, read_json
 from .research_design import validate_design
 
 WORKFLOW_SCHEMA_VERSION = 1
+REPORT_TODO_RE = re.compile(r"TODO|待补充|待填写|待判定|pending", re.IGNORECASE)
 
 
 def _workers(root: Path, run_id: str) -> list[dict[str, Any]]:
@@ -278,6 +280,26 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
         if audit.get("run_id") == active_run_id:
             audits.append((audit_path, audit))
     if not audits:
+        reports = sorted(
+            (root / "reports").glob("*.md"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        completed_reports = [
+            path
+            for path in reports
+            if not REPORT_TODO_RE.search(path.read_text(encoding="utf-8"))
+        ]
+        if completed_reports:
+            report = completed_reports[0]
+            return _result(
+                root,
+                state,
+                "report_audit",
+                "initialize_quote_audit",
+                command=f"qualityctl.py audit-init --report {report}",
+                progress={**progress, "report": str(report)},
+            )
         return _result(
             root,
             state,
@@ -285,7 +307,15 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
             "invoke_synthesizer_and_write_report",
             agent="research_synthesizer",
             command="research.py report --type final",
-            progress=progress,
+            blockers=[
+                "No substantive report without TODO or pending markers is ready for audit."
+            ]
+            if reports
+            else [],
+            progress={
+                **progress,
+                "draft_reports": [str(path) for path in reports],
+            },
         )
 
     valid_final_audits = [
