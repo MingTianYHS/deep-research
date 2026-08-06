@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .agent_snapshots import build_review_snapshot, canonical_sha256, snapshot_matches
+from .citations import CITATION_RE
 from .critic_reviews import approved_reviews_for_run, load_review
 from .io_utils import read_json
 from .topic_context import build_brief
@@ -167,10 +168,10 @@ def validate_synthesis_result(
     for key in ("claim_ids_used", "evidence_ids_used", "unresolved"):
         if not isinstance(value.get(key), list):
             errors.append(f"synthesis {key} must be a list")
-    if not isinstance(value.get("report_markdown"), str) or not value.get(
-        "report_markdown", ""
-    ).strip():
+    report_markdown = value.get("report_markdown")
+    if not isinstance(report_markdown, str) or not report_markdown.strip():
         errors.append("synthesis report_markdown must be non-empty")
+        report_markdown = ""
     report_path = value.get("report_path")
     if not isinstance(report_path, str) or not report_path.strip():
         errors.append("synthesis report_path must be non-empty")
@@ -181,6 +182,8 @@ def validate_synthesis_result(
             )
         except (OSError, ValueError):
             errors.append("synthesis report_path must stay inside topic reports")
+    if value.get("output_language") != _topic_language(root):
+        errors.append("synthesis output_language does not match topic language")
 
     review_id = value.get("critic_review_id")
     review: dict[str, Any] | None = None
@@ -231,15 +234,23 @@ def validate_synthesis_result(
         if isinstance(value.get("evidence_ids_used"), list)
         else set()
     )
+    cited_evidence = set(CITATION_RE.findall(report_markdown))
     if not used_claims <= allowed_claims:
         errors.append("synthesis used Claims outside the reviewed snapshot")
     if not used_evidence <= allowed_evidence:
         errors.append("synthesis used Evidence outside the reviewed snapshot")
+    if not cited_evidence <= allowed_evidence:
+        errors.append("synthesis report cites Evidence outside the reviewed snapshot")
+    if not cited_evidence <= used_evidence:
+        errors.append("synthesis report citations must be declared in evidence_ids_used")
     if value.get("status") == "complete" and (
-        not used_claims or not used_evidence or value.get("unresolved")
+        not used_claims
+        or not used_evidence
+        or not cited_evidence
+        or value.get("unresolved")
     ):
         errors.append(
-            "complete synthesis requires Claims, Evidence, and no unresolved items"
+            "complete synthesis requires Claims, Evidence citations, and no unresolved items"
         )
     return {
         "valid": not errors,

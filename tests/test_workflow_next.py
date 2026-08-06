@@ -55,12 +55,20 @@ def topic(tmp_path: Path, *, active_run_id=None) -> Path:
     (root / "reports").mkdir(parents=True)
     (root / "claims.jsonl").write_text("", encoding="utf-8")
     (root / "logs/runs.jsonl").write_text("", encoding="utf-8")
+    (root / "evidence").mkdir(parents=True)
+    (root / "evidence/cards.jsonl").write_text("", encoding="utf-8")
+    (root / "memory").mkdir(parents=True)
+    (root / "memory/lessons.jsonl").write_text("", encoding="utf-8")
+    (root / "topic.toml").write_text(
+        'title = "测试主题"\nlanguage = "zh-CN"\n', encoding="utf-8"
+    )
     write_json(
         root / "state.json",
         {
             "topic": "测试主题",
             "budget_profile": "standard",
             "active_run_id": active_run_id,
+            "baseline_completed": False,
             "open_questions": ["q-001"],
         },
     )
@@ -69,7 +77,7 @@ def topic(tmp_path: Path, *, active_run_id=None) -> Path:
 
 def test_next_requests_canonical_design_when_missing(tmp_path):
     root = topic(tmp_path)
-    result = derive_workflow(root, tmp_path / "skill")
+    result = derive_workflow(root, SCRIPT_DIR.parent)
     assert result["phase"] == "research_design"
     assert result["next_action"] == "create_research_design"
     assert result["requires_user_input"] is False
@@ -78,18 +86,21 @@ def test_next_requests_canonical_design_when_missing(tmp_path):
 def test_next_starts_run_after_valid_design(tmp_path):
     root = topic(tmp_path)
     write_json(root / "plans/current-design.json", design())
-    result = derive_workflow(root, tmp_path / "skill")
+    result = derive_workflow(root, SCRIPT_DIR.parent)
     assert result["phase"] == "ready_to_start"
     assert result["next_action"] == "start_run"
 
 
-def test_next_delegates_ready_questions_to_named_researcher(tmp_path):
+def test_next_delegates_complete_assignment_to_named_researcher(tmp_path):
     root = topic(tmp_path, active_run_id="run-current")
     write_json(root / "plans/current-design.json", design())
-    result = derive_workflow(root, tmp_path / "skill")
+    result = derive_workflow(root, SCRIPT_DIR.parent)
     assert result["phase"] == "worker_research"
     assert result["agent"] == "topic_researcher"
-    assert result["assignments"][0]["question_id"] == "q-001"
+    assignment = result["assignments"][0]
+    assert assignment["question_id"] == "q-001"
+    assert assignment["assignment_version"] == 1
+    assert assignment["budget"]["max_search_queries"] == 6
     assert result["requires_user_input"] is False
 
 
@@ -107,25 +118,26 @@ def test_next_blocks_unsafe_reflection_without_critic(tmp_path):
         + "\n",
         encoding="utf-8",
     )
-    result = derive_workflow(root, tmp_path / "skill")
+    result = derive_workflow(root, SCRIPT_DIR.parent)
     assert result["phase"] == "reflection_blocked"
     assert result["progress"]["run_id"] == "run-finished"
 
 
-def test_next_initializes_audit_only_for_report_citing_current_run(
-    monkeypatch, tmp_path
-):
-    root = topic(tmp_path, active_run_id="run-current")
-    write_json(root / "plans/current-design.json", design())
+def prepare_completed_worker(root: Path):
     write_json(
         root / "logs/workers/worker-current.json",
         {
+            "worker_result_id": "worker-current",
             "run_id": "run-current",
             "question_id": "q-001",
             "status": "complete",
+            "coverage_status": "sufficient",
             "ingest_summary": {"accepted_evidence_ids": ["ev-current"]},
         },
     )
+
+
+def patch_claim_and_approval(monkeypatch):
     monkeypatch.setattr(
         workflow,
         "materialize",
@@ -141,54 +153,103 @@ def test_next_initializes_audit_only_for_report_citing_current_run(
     monkeypatch.setattr(
         workflow,
         "approved_reviews_for_run",
-        lambda _root, _run: [{"id": "critic-1", "status": "approved"}],
+        lambda _root, _run, current_only=True: [
+            {
+                "id": "critic-1",
+                "status": "approved",
+                "reviewed_snapshot": {},
+            }
+        ],
     )
+
+
+def test_next_initializes_audit_only_for_report_citing_current_run(
+    monkeypatch, tmp_path
+):
+    root = topic(tmp_path, active_run_id="run-current")
+    write_json(root / "plans/current-design.json", design())
+    prepare_completed_worker(root)
+    patch_claim_and_approval(monkeypatch)
     report = root / "reports/最终报告.md"
     report.write_text(
         "---\ntitle: 最终报告\nstatus: complete\n---\n\n"
         "## 核心结论\n\n本轮证据支持该结论。[[ev-current]]",
         encoding="utf-8",
     )
-    result = derive_workflow(root, tmp_path / "skill")
+    result = derive_workflow(root, SCRIPT_DIR.parent)
     assert result["phase"] == "report_audit"
     assert result["next_action"] == "initialize_quote_audit"
     assert str(report) in result["command"]
     assert result["progress"]["current_run_citations"] == ["ev-current"]
 
 
-def test_next_does_not_audit_historical_report_without_current_run_evidence(
-    monkeypatch, tmp_path
-):
+def test_next_routes_historical_report_to_new_scaffold(monkeypatch, tmp_path):
     root = topic(tmp_path, active_run_id="run-current")
     write_json(root / "plans/current-design.json", design())
-    write_json(
-        root / "logs/workers/worker-current.json",
-        {
-            "run_id": "run-current",
-            "question_id": "q-001",
-            "status": "complete",
-            "ingest_summary": {"accepted_evidence_ids": ["ev-current"]},
-        },
-    )
-    monkeypatch.setattr(
-        workflow,
-        "materialize",
-        lambda _path: {
-            "claim-current": {
-                "relations": [{"evidence_id": "ev-current", "stance": "support"}]
+    prepare_completed_worker(root)
+    patch_claim_and_approval(monkeypatch)
+    (root / "logs/runs.jsonl").write_text(
+        json.dumps(
+            {
+                "id": "run-current",
+                "status": "running",
+                "started_at": "2999-01-01T00:00:00Z",
             }
-        },
-    )
-    monkeypatch.setattr(
-        workflow,
-        "approved_reviews_for_run",
-        lambda _root, _run: [{"id": "critic-1", "status": "approved"}],
+        )
+        + "\n",
+        encoding="utf-8",
     )
     (root / "reports/历史报告.md").write_text(
         "---\ntitle: 历史报告\nstatus: complete\n---\n\n"
         "## 核心结论\n\n历史结论。[[ev-historical]]",
         encoding="utf-8",
     )
-    result = derive_workflow(root, tmp_path / "skill")
+    result = derive_workflow(root, SCRIPT_DIR.parent)
     assert result["phase"] == "synthesis"
-    assert result["next_action"] == "invoke_synthesizer_and_write_report"
+    assert result["next_action"] == "create_report_scaffold"
+
+
+def test_next_routes_current_changes_required_to_targeted_research(
+    monkeypatch, tmp_path
+):
+    root = topic(tmp_path, active_run_id="run-current")
+    write_json(root / "plans/current-design.json", design())
+    prepare_completed_worker(root)
+    monkeypatch.setattr(
+        workflow,
+        "materialize",
+        lambda _path: {
+            "claim-current": {
+                "id": "claim-current",
+                "relations": [{"evidence_id": "ev-current"}],
+            }
+        },
+    )
+    monkeypatch.setattr(
+        workflow, "approved_reviews_for_run", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        workflow,
+        "latest_review_for_run",
+        lambda *_args: {
+            "id": "critic-1",
+            "status": "changes_required",
+            "findings": [],
+            "targeted_searches": [
+                {
+                    "id": "targeted-1",
+                    "finding_id": "finding-1",
+                    "question_id": "q-001",
+                    "query": "site:example.gov primary filing",
+                    "intent": "primary_source",
+                    "required_evidence": "Primary filing",
+                    "stop_condition": "Found or official archive exhausted",
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(workflow, "review_is_current", lambda *_args: True)
+    result = derive_workflow(root, SCRIPT_DIR.parent)
+    assert result["phase"] == "critic_remediation"
+    assert result["agent"] == "topic_researcher"
+    assert result["assignments"][0]["remediation"]["finding_id"] == "finding-1"
