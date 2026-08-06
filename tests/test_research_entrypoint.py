@@ -23,6 +23,7 @@ def test_public_commands_are_small_and_workflow_focused():
         "brief",
         "start",
         "status",
+        "next",
         "report",
         "finish",
         "validate",
@@ -101,3 +102,19 @@ def test_public_validate_prints_one_json_result_for_naming_failure(
     assert result["valid"] is False
     assert result["errors"] == ["language mismatch"]
     assert output.count("{\n") == 1
+
+
+def test_public_next_returns_machine_readable_coordinator_action(monkeypatch, capsys):
+    monkeypatch.setattr(module.researchctl, "topic_dir", lambda topic: Path("/tmp/topic"))
+    monkeypatch.setattr(
+        module,
+        "derive_workflow",
+        lambda root, skill: {
+            "phase": "worker_research",
+            "next_action": "delegate_open_questions",
+        },
+    )
+    module.cmd_next(argparse.Namespace(topic=None))
+    result = json.loads(capsys.readouterr().out)
+    assert result["phase"] == "worker_research"
+    assert result["next_action"] == "delegate_open_questions"

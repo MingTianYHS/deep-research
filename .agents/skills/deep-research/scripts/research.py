@@ -9,6 +9,7 @@ import json
 
 import researchctl
 import topicctl
+from lib.workflow import derive_workflow
 
 
 def cmd_new(args: argparse.Namespace) -> None:
@@ -41,6 +42,12 @@ def cmd_start(args: argparse.Namespace) -> None:
 
 def cmd_status(args: argparse.Namespace) -> None:
     researchctl.cmd_status(argparse.Namespace(slug=args.topic))
+
+
+def cmd_next(args: argparse.Namespace) -> None:
+    root = researchctl.topic_dir(args.topic)
+    result = derive_workflow(root, researchctl.SKILL_DIR)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_report(args: argparse.Namespace) -> None:
@@ -145,6 +152,13 @@ def parser() -> argparse.ArgumentParser:
     status = sub.add_parser("status", help="Show topic state and record counts.")
     _topic_argument(status)
     status.set_defaults(func=cmd_status)
+
+    next_step = sub.add_parser(
+        "next",
+        help="Return the next legal coordinator action from persisted workspace state.",
+    )
+    _topic_argument(next_step)
+    next_step.set_defaults(func=cmd_next)
 
     report = sub.add_parser(
         "report", help="Create a report inside the canonical topic workspace."
