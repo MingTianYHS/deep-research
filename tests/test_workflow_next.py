@@ -112,11 +112,32 @@ def test_next_blocks_unsafe_reflection_without_critic(tmp_path):
     assert result["progress"]["run_id"] == "run-finished"
 
 
-def test_next_initializes_audit_after_substantive_report(monkeypatch, tmp_path):
+def test_next_initializes_audit_only_for_report_citing_current_run(
+    monkeypatch, tmp_path
+):
     root = topic(tmp_path, active_run_id="run-current")
-    value = design()
-    value["questions"][0]["status"] = "closed"
-    write_json(root / "plans/current-design.json", value)
+    write_json(root / "plans/current-design.json", design())
+    write_json(
+        root / "logs/workers/worker-current.json",
+        {
+            "run_id": "run-current",
+            "question_id": "q-001",
+            "status": "complete",
+            "ingest_summary": {"accepted_evidence_ids": ["ev-current"]},
+        },
+    )
+    monkeypatch.setattr(
+        workflow,
+        "materialize",
+        lambda _path: {
+            "claim-current": {
+                "id": "claim-current",
+                "relations": [
+                    {"evidence_id": "ev-current", "stance": "support"}
+                ],
+            }
+        },
+    )
     monkeypatch.setattr(
         workflow,
         "approved_reviews_for_run",
@@ -124,10 +145,50 @@ def test_next_initializes_audit_after_substantive_report(monkeypatch, tmp_path):
     )
     report = root / "reports/最终报告.md"
     report.write_text(
-        "---\ntitle: 最终报告\nstatus: complete\n---\n\n## 核心结论\n\n已完成报告。",
+        "---\ntitle: 最终报告\nstatus: complete\n---\n\n"
+        "## 核心结论\n\n本轮证据支持该结论。[[ev-current]]",
         encoding="utf-8",
     )
     result = derive_workflow(root, tmp_path / "skill")
     assert result["phase"] == "report_audit"
     assert result["next_action"] == "initialize_quote_audit"
     assert str(report) in result["command"]
+    assert result["progress"]["current_run_citations"] == ["ev-current"]
+
+
+def test_next_does_not_audit_historical_report_without_current_run_evidence(
+    monkeypatch, tmp_path
+):
+    root = topic(tmp_path, active_run_id="run-current")
+    write_json(root / "plans/current-design.json", design())
+    write_json(
+        root / "logs/workers/worker-current.json",
+        {
+            "run_id": "run-current",
+            "question_id": "q-001",
+            "status": "complete",
+            "ingest_summary": {"accepted_evidence_ids": ["ev-current"]},
+        },
+    )
+    monkeypatch.setattr(
+        workflow,
+        "materialize",
+        lambda _path: {
+            "claim-current": {
+                "relations": [{"evidence_id": "ev-current", "stance": "support"}]
+            }
+        },
+    )
+    monkeypatch.setattr(
+        workflow,
+        "approved_reviews_for_run",
+        lambda _root, _run: [{"id": "critic-1", "status": "approved"}],
+    )
+    (root / "reports/历史报告.md").write_text(
+        "---\ntitle: 历史报告\nstatus: complete\n---\n\n"
+        "## 核心结论\n\n历史结论。[[ev-historical]]",
+        encoding="utf-8",
+    )
+    result = derive_workflow(root, tmp_path / "skill")
+    assert result["phase"] == "synthesis"
+    assert result["next_action"] == "invoke_synthesizer_and_write_report"

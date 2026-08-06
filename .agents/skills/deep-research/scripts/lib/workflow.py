@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .audit import validate_audit
+from .citations import CITATION_RE
 from .claims import materialize
 from .completion import completion_gate
 from .critic_reviews import approved_reviews_for_run
@@ -285,11 +286,15 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
             key=lambda path: path.stat().st_mtime,
             reverse=True,
         )
-        completed_reports = [
-            path
-            for path in reports
-            if not REPORT_TODO_RE.search(path.read_text(encoding="utf-8"))
-        ]
+        completed_reports: list[Path] = []
+        for path in reports:
+            text = path.read_text(encoding="utf-8")
+            cited = set(CITATION_RE.findall(text))
+            if (
+                not REPORT_TODO_RE.search(text)
+                and bool(cited & accepted_evidence_ids)
+            ):
+                completed_reports.append(path)
         if completed_reports:
             report = completed_reports[0]
             return _result(
@@ -297,8 +302,15 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
                 state,
                 "report_audit",
                 "initialize_quote_audit",
-                command=f"qualityctl.py audit-init --report {report}",
-                progress={**progress, "report": str(report)},
+                command=f'qualityctl.py audit-init --report "{report}"',
+                progress={
+                    **progress,
+                    "report": str(report),
+                    "current_run_citations": sorted(
+                        set(CITATION_RE.findall(report.read_text(encoding="utf-8")))
+                        & accepted_evidence_ids
+                    ),
+                },
             )
         return _result(
             root,
@@ -308,7 +320,8 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
             agent="research_synthesizer",
             command="research.py report --type final",
             blockers=[
-                "No substantive report without TODO or pending markers is ready for audit."
+                "No substantive report without TODO/pending markers and with at least "
+                "one current-run Evidence citation is ready for audit."
             ]
             if reports
             else [],
