@@ -4,7 +4,7 @@ description: Conduct citation-first deep research in Codex with persistent topic
 license: MIT
 metadata:
   author: MingTianYHS
-  version: "0.9.0rc1"
+  version: "0.9.0rc2"
 compatibility: OpenAI Codex with user-level skills and custom agents enabled; Python 3.11+; optional web-access Skill for authorized login/anti-bot pages.
 ---
 
@@ -13,6 +13,14 @@ compatibility: OpenAI Codex with user-level skills and custom agents enabled; Py
 The Codex session started from a topic workspace is the persistent **topic-expert coordinator**. It owns planning, approvals, state, and writes. It may delegate execution only to `topic_researcher`, `research_critic`, and `research_synthesizer`, which are fixed read-only roles.
 
 The expert is reconstructed from the workspace on every session. Expertise compounds through validated Claim/Evidence, a bounded derived context, and Critic-approved reusable lessons; model weights do not change.
+
+## Codex is the orchestrator
+
+The main Codex session is the only upper-level Agent orchestrator. Do not create a second Python Agent runtime, scheduler, daemon, LangGraph, or autonomous controller.
+
+At session start and after every lifecycle mutation, run `research.py next` and execute the returned `next_action`. The result is a machine-readable coordinator contract containing the current phase, legal next action, optional named Agent, assignments, blockers, and progress. Python decides what is legal; Codex performs the reasoning, Agent delegation, and approved writes.
+
+Do not ask the user to run internal controllers. Ask the user only when `requires_user_input` is true, the decision scope is materially ambiguous, or an external side effect requires approval.
 
 ## Public workflow and internal control plane
 
@@ -27,6 +35,7 @@ codex
 Inside the topic workspace:
 
 ```bash
+python ~/.agents/skills/deep-research/scripts/research.py next
 python ~/.agents/skills/deep-research/scripts/research.py plan --questions 5
 python ~/.agents/skills/deep-research/scripts/research.py brief
 python ~/.agents/skills/deep-research/scripts/research.py start --mode baseline
@@ -64,16 +73,18 @@ Do not add a second Wiki, fact database, vector store, memory service, query dat
 
 1. Run `runtimectl.py doctor --strict`.
 2. Enter the topic workspace and read `AGENTS.md`, `topic.toml`, `state.json`, and `context.md`.
-3. Create/edit the canonical Research Design, then validate it with `designctl.py validate --strict`.
-4. Build a baseline, incremental, or question Brief.
-5. Start a Run and delegate one non-overlapping question per `topic_researcher`.
-6. Ingest only strict Worker Result v2 objects. Validate Query → Source Attempt → Evidence lineage and budget/run/design binding.
-7. Run `research_critic` after the evidence wave. Persist an approved review only after blocker/high findings are resolved or the Run is explicitly partial/failed.
+3. Run `research.py next`; follow its `next_action`, `agent`, `assignments`, and `blockers`.
+4. Create/edit the canonical Research Design, then validate it with `designctl.py validate --strict`.
+5. Build a baseline, incremental, or question Brief.
+6. Start a Run and delegate one non-overlapping assignment per `topic_researcher` returned by `research.py next`.
+7. Ingest only strict Worker Result v2 objects. Validate Query → Source Attempt → Evidence lineage and budget/run/design binding.
 8. Materialize Claim–Evidence relations. Core Claim transitions require explicit approval.
-9. Use `research_synthesizer` only after Claim/Evidence review; it may not introduce new factual claims.
-10. Create the report through `research.py report`, then run citation, Evidence quality, report rubric, and final Quote Audit checks.
-11. Run `research.py finish --status complete` only when all completion gates pass; otherwise close as partial or failed.
-12. Apply a Critic-linked Reflection through the internal control plane. Reflection updates generation, open questions, next actions, bounded context, and deduplicated Lessons, but never silently changes Claim status.
+9. Run `research_critic` after the evidence wave. Persist an approved review only after blocker/high findings are resolved or the Run is explicitly partial/failed.
+10. Use `research_synthesizer` only after Claim/Evidence review; it may not introduce new factual claims.
+11. Create the report through `research.py report`, then run citation, Evidence quality, report rubric, and final Quote Audit checks.
+12. Run `research.py finish --status complete` only when `research.py next` returns `ready_to_finish`; otherwise resolve the returned blockers or close as partial/failed.
+13. Apply a Critic-linked Reflection through the internal control plane. Reflection updates generation, open questions, next actions, bounded context, and deduplicated Lessons, but never silently changes Claim status.
+14. Run `research.py next` again after every successful write until the lifecycle reaches the intended stopping point.
 
 ## Query discipline
 
@@ -104,6 +115,7 @@ Use one provider per query. Prefer native web for ordinary/official discovery, T
 9. Context, Lessons, reports, prior summaries, and query traces are not evidence.
 10. Stop at acceptance criteria, hard limits, or the second low-yield result after one pivot.
 11. Do not bypass the public workflow and guarded implementation with direct filesystem writes or compatibility links.
+12. `research.py next` is guidance derived from persisted state, not permission to bypass confirmations, safety, or completion gates.
 
 ## Workspace format 2
 

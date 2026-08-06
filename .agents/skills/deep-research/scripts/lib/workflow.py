@@ -116,7 +116,6 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
             "research_design",
             "create_research_design",
             command="research.py plan --questions <1-8>",
-            requires_user_input=True,
             blockers=["No canonical Research Design exists."],
         )
 
@@ -129,7 +128,6 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
             "research_design",
             "repair_research_design",
             command="designctl.py validate --file plans/current-design.json --strict",
-            requires_user_input=True,
             blockers=design_check["errors"],
         )
 
@@ -137,6 +135,19 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
     if not active_run_id:
         unreflected = _unfinished_reflection(root)
         if unreflected:
+            approved = approved_reviews_for_run(root, unreflected)
+            if not approved:
+                return _result(
+                    root,
+                    state,
+                    "reflection_blocked",
+                    "report_missing_run_critic_review",
+                    blockers=[
+                        "The finished Run has no approved persisted Critic Review; "
+                        "Reflection cannot be applied safely."
+                    ],
+                    progress={"run_id": unreflected},
+                )
             return _result(
                 root,
                 state,

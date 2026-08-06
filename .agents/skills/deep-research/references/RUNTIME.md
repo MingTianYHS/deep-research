@@ -1,5 +1,28 @@
 # Runtime commands
 
+## Codex coordinator loop
+
+The main Codex session is the upper-level Agent orchestrator. Python provides deterministic workflow state and gates; it does not spawn a second Agent runtime.
+
+At session start and after every successful lifecycle write, run:
+
+```bash
+python "$SKILL/scripts/research.py" next
+```
+
+The command returns one JSON contract with:
+
+- `phase`
+- `next_action`
+- optional `command`
+- optional named `agent`
+- non-overlapping `assignments`
+- `blockers`
+- `progress`
+- `requires_user_input`
+
+The coordinator executes that action in Codex. It does not ask the user to run internal controllers. It asks only when `requires_user_input` is true, material scope is ambiguous, or an external side effect needs approval.
+
 ## Public workflow
 
 `research.py` is the single documented user-facing entry point. It routes topic creation and report initialization through the guarded naming and workspace-boundary implementation. Low-level `*ctl.py` commands are an internal control plane for the topic-expert coordinator and maintainers.
@@ -14,6 +37,7 @@ codex
 From inside a topic directory:
 
 ```bash
+python "$SKILL/scripts/research.py" next
 python "$SKILL/scripts/research.py" plan --questions 5
 python "$SKILL/scripts/research.py" brief
 python "$SKILL/scripts/research.py" start --mode baseline
@@ -24,7 +48,7 @@ python "$SKILL/scripts/research.py" validate
 
 `report` creates a report target; it does not make a Run complete. Between `start` and `finish`, the topic-expert coordinator must execute the Research Design, persist current-Run Worker Results and accepted Evidence, review Claim–Evidence, save an approved Critic Review, write a substantive report, and pass citation, Evidence quality, report rubric, and final Quote Audit gates.
 
-Only after those gates pass:
+Only after `research.py next` returns `ready_to_finish`:
 
 ```bash
 python "$SKILL/scripts/research.py" finish --status complete

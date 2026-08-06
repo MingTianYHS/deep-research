@@ -17,7 +17,12 @@ def design() -> dict:
     return {
         "title": "测试主题",
         "decision_context": "支持测试决策",
-        "scope": {"include": [], "exclude": [], "time_window": "", "geographies": []},
+        "scope": {
+            "include": [],
+            "exclude": [],
+            "time_window": "",
+            "geographies": [],
+        },
         "questions": [
             {
                 "id": "q-001",
@@ -66,7 +71,7 @@ def test_next_requests_canonical_design_when_missing(tmp_path):
     result = derive_workflow(root, tmp_path / "skill")
     assert result["phase"] == "research_design"
     assert result["next_action"] == "create_research_design"
-    assert result["requires_user_input"] is True
+    assert result["requires_user_input"] is False
 
 
 def test_next_starts_run_after_valid_design(tmp_path):
@@ -87,7 +92,7 @@ def test_next_delegates_ready_questions_to_named_researcher(tmp_path):
     assert result["requires_user_input"] is False
 
 
-def test_next_requires_reflection_after_finished_run(tmp_path):
+def test_next_blocks_unsafe_reflection_without_critic(tmp_path):
     root = topic(tmp_path)
     write_json(root / "plans/current-design.json", design())
     (root / "logs/runs.jsonl").write_text(
@@ -102,5 +107,5 @@ def test_next_requires_reflection_after_finished_run(tmp_path):
         encoding="utf-8",
     )
     result = derive_workflow(root, tmp_path / "skill")
-    assert result["phase"] == "reflection"
+    assert result["phase"] == "reflection_blocked"
     assert result["progress"]["run_id"] == "run-finished"

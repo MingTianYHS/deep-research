@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- State-driven `research.py next` coordinator contracts with explicit phases, next actions, named Agent assignments, blockers, progress, and user-input requirements.
+- Workflow-phase regression coverage for Research Design, Run start, Worker delegation, and Reflection routing.
 - Unified user-facing `research.py` workflow for topic creation, planning, bounded context, Run start/status/finish, guarded report initialization, and validation.
 - Regression coverage proving that public topic/report writes route through guarded controllers and that destructive topic overwrite is not exposed publicly.
 - Skill-level query discipline with explicit query intents, evidence-oriented low-yield pivots, compact query traces, and Query-to-Source Attempt lineage.
@@ -14,7 +16,10 @@ All notable changes to this project are documented here.
 
 ### Changed
 
-- README and Runtime documentation now distinguish the small public workflow from the low-level coordinator control plane.
+- Codex is now explicitly the only upper-level Agent orchestrator; Python returns legal workflow actions instead of introducing a second Agent runtime.
+- Coordinators call `research.py next` at session start and after lifecycle writes, and execute internal controls on the user's behalf.
+- Release candidate metadata advances to `0.9.0rc2` so installations containing the state-driven coordinator can be distinguished from earlier `0.9.0rc1` builds.
+- README and Runtime documentation distinguish the small public workflow from the low-level coordinator control plane.
 - Runtime preflight requires the unified public workflow entry point.
 - Free-quota provider routing distinguishes query construction from tool selection and no longer uses result counts as a low-yield threshold.
 - Worker ingestion accumulates self-reported query/page usage and accepted Evidence exactly once.
