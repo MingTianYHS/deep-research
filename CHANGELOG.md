@@ -6,57 +6,39 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Versioned Researcher, Critic, and Synthesis assignments with explicit instruction-inheritance notices.
+- Immutable Design/Worker/Evidence/Claim snapshot hashes for Critic Review v2.
+- Stable Critic Finding and Targeted Search contracts with bounded remediation routing.
+- Search-free SynthesisResult v1 validation and guarded report persistence through `agentctl.py`.
+- Regression coverage for complete researcher payloads, stale Critic approvals, targeted remediation, and synthesis snapshot boundaries.
 - State-driven `research.py next` coordinator contracts with explicit phases, next actions, named Agent assignments, blockers, progress, and user-input requirements.
-- Workflow-phase regression coverage for Research Design, Run start, Worker delegation, and Reflection routing.
-- Unified user-facing `research.py` workflow for topic creation, planning, bounded context, Run start/status/finish, guarded report initialization, and validation.
-- Regression coverage proving that public topic/report writes route through guarded controllers and that destructive topic overwrite is not exposed publicly.
-- Skill-level query discipline with explicit query intents, evidence-oriented low-yield pivots, compact query traces, and Query-to-Source Attempt lineage.
-- Persisted run-bound Critic Reviews and a deterministic full lifecycle smoke test.
-- Guarded topic naming and workspace-boundary entry points.
 
 ### Changed
 
-- Codex is now explicitly the only upper-level Agent orchestrator; Python returns legal workflow actions instead of introducing a second Agent runtime.
-- Coordinators call `research.py next` at session start and after lifecycle writes, and execute internal controls on the user's behalf.
-- Release candidate metadata advances to `0.9.0rc2` so installations containing the state-driven coordinator can be distinguished from earlier `0.9.0rc1` builds.
-- README and Runtime documentation distinguish the small public workflow from the low-level coordinator control plane.
-- Runtime preflight requires the unified public workflow entry point.
-- Free-quota provider routing distinguishes query construction from tool selection and no longer uses result counts as a low-yield threshold.
-- Worker ingestion accumulates self-reported query/page usage and accepted Evidence exactly once.
-- Complete Run status requires active-run Worker/Evidence, approved Critic Review, live quality gates, report rubric, citation validation, and final Quote Audit.
-- Chinese topic titles default to Chinese human-readable directories and report names; technical IDs remain ASCII.
+- Release candidate metadata advances to `0.9.0rc3`.
+- `topic_researcher` no longer assumes parent Skill inheritance and receives full scope, exclusions, known URLs, dependency results, version anchors, remediation targets, and numeric budgets.
+- Known-URL retrieval uses an initial attempt plus one failure-specific fallback instead of an unconditional multi-tool chain.
+- `research_critic` approvals are invalidated when reviewed state changes; `changes_required` now routes to Researcher remediation before recheck.
+- `research_synthesizer` is strictly search-free and returns a validated JSON envelope instead of unbound Markdown.
+- Codex remains the only upper-level orchestrator; Python validates legal workflow actions and contracts.
 
 ### Fixed
 
-- User documentation no longer recommends the unguarded legacy `researchctl.py init-topic` route.
-- Real topic workspaces are ignored by Git while the tracked `.gitkeep` remains available.
-- Workspace migration, Evidence lineage, and Quote Audit documentation match format 2 and current validators.
-- Quote Audits freeze Source Attempt identity, content hash, report hash, and active Run identity.
-- Guarded report initialization prevents an accidental report copy outside the canonical topic workspace.
+- Stale Critic approval can no longer satisfy completion after Design, Worker, Evidence, or Claim changes.
+- Critic targeted searches are limited to three and must reference blocker/high findings.
+- Reports cannot be written by synthesis outside the canonical topic `reports/` directory.
 
 ## 0.9.0rc1 - 2026-08-02
 
 ### Added
 
-- Codex-native persistent topic experts activated by workspace `AGENTS.md`.
-- Current-directory topic command resolution.
-- Canonical `plans/current-design.json` with generated `questions.md` and synchronized open-question state.
-- Baseline, incremental, and question-specific bounded Briefs.
-- Rebuildable `context.md` and Critic-validated reusable `memory/lessons.jsonl`.
-- Structured Reflection lifecycle and research-generation tracking.
-- Workspace format 2 migration.
-
-### Changed
-
-- The main Codex session is the topic-expert coordinator; three global custom agents remain fixed read-only execution roles.
-- Per-topic Agent TOML generation is deprecated and `--install-agent` no longer creates files.
-- Claim/Evidence remains the only topic fact authority; no Wiki, vector database, or memory middleware was added.
+- Codex-native persistent topic experts, format-2 workspaces, Research Design, bounded Briefs, Reflection, and reusable validated Lessons.
 
 ## 0.8.0rc1 - 2026-08-02
 
 ### Added
 
-- Strict Worker/Source Attempt/Evidence linkage, authorized web-access fallback, canonical budgets, locks, stronger Doctor and Quote Audit gates, and cross-platform CI.
+- Strict Worker/Source Attempt/Evidence linkage, authorized web-access fallback, budgets, locks, Doctor, Quote Audit, and cross-platform CI.
 
 ## 0.7.0rc1 - 2026-08-01
 
