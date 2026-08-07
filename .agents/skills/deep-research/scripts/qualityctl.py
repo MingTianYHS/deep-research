@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quality scoring and quote-fidelity audit control plane."""
+"""Hard Evidence gates, diagnostic quality metrics, and quote-fidelity audits."""
 from __future__ import annotations
 
 import argparse
@@ -20,10 +20,7 @@ POLICY_FILE = SKILL_DIR / "config/source_policy.toml"
 
 
 def root_for(slug: str | None) -> Path:
-    if slug:
-        root = WORKSPACE_ROOT / slug
-    else:
-        root = Path.cwd()
+    root = WORKSPACE_ROOT / slug if slug else Path.cwd()
     if not root.exists() or not (root / "state.json").exists():
         raise SystemExit(f"topic not found: {slug or root} (workspace root: {WORKSPACE_ROOT})")
     return root
@@ -34,21 +31,25 @@ def source_attempt_map(root: Path) -> dict[str, dict]: return {item["id"]: item 
 
 
 def cmd_quality(args: argparse.Namespace) -> None:
-    root = root_for(args.slug); cards = list(evidence_map(root).values()); result = evaluate(cards, load_policy(POLICY_FILE), date.fromisoformat(args.as_of) if args.as_of else None)
+    root = root_for(args.slug); cards = list(evidence_map(root).values()); policy = load_policy(POLICY_FILE)
+    result = evaluate(cards, policy, date.fromisoformat(args.as_of) if args.as_of else None)
     question_ids = set(re.findall(r"^##\s+(q-[A-Za-z0-9_-]+)", (root / "questions.md").read_text(encoding="utf-8"), re.MULTILINE)); coverage = result["questions_covered"] / len(question_ids) if question_ids else 0.0
-    policy = load_policy(POLICY_FILE); gates = policy["quality_gates"]; result["question_count"] = len(question_ids); result["question_coverage"] = round(coverage, 4)
-    result["gates"] = {"minimum_card_score": result["average_score"] >= float(gates["minimum_card_score"]), "minimum_primary_source_ratio": result["primary_source_ratio"] >= float(gates["minimum_primary_source_ratio"]), "minimum_question_coverage": coverage >= float(gates["minimum_question_coverage"]), "maximum_high_risk_cards": len(result["high_risk_cards"]) <= int(gates["maximum_high_risk_cards"])}; result["passes_all_gates"] = all(result["gates"].values())
+    gates = policy["quality_gates"]; result["question_count"] = len(question_ids); result["question_coverage"] = round(coverage, 4)
+    result["gates"] = {
+        "minimum_primary_source_ratio": result["primary_source_ratio"] >= float(gates["minimum_primary_source_ratio"]),
+        "minimum_question_coverage": coverage >= float(gates["minimum_question_coverage"]),
+        "maximum_high_risk_cards": len(result["high_risk_cards"]) <= int(gates["maximum_high_risk_cards"]),
+    }
+    result["passes_all_gates"] = all(result["gates"].values()); result["scoring_mode"] = "hard_gates_only"
     if args.output: atomic_write_json(Path(args.output), result)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if args.require_gates and not result["passes_all_gates"]: raise SystemExit(1)
 
 
 def _audit_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, str | None]:
-    root = root_for(args.slug)
-    report_path = Path(args.report)
+    root = root_for(args.slug); report_path = Path(args.report)
     output = Path(args.output) if args.output else report_path.with_suffix(report_path.suffix + ".audit.json")
-    run_id = read_json(root / "state.json", {}).get("active_run_id")
-    return root, report_path, output, run_id
+    return root, report_path, output, read_json(root / "state.json", {}).get("active_run_id")
 
 
 def cmd_audit_init(args: argparse.Namespace) -> None:
@@ -59,8 +60,7 @@ def cmd_audit_init(args: argparse.Namespace) -> None:
 def cmd_audit_mechanical(args: argparse.Namespace) -> None:
     root, report_path, output, run_id = _audit_paths(args)
     create_audit(report_path, evidence_map(root), output, source_attempt_map(root), run_id=run_id)
-    audit = mechanically_verify_audit(output)
-    result = validate_audit(output, require_all_verified=True)
+    audit = mechanically_verify_audit(output); result = validate_audit(output, require_all_verified=True)
     print(json.dumps({"audit": str(output), "run_id": run_id, "items": len(audit.get("items", [])), "verification_mode": audit.get("verification_mode"), "valid": result["valid"], "errors": result["errors"]}, ensure_ascii=False, indent=2))
     if not result["valid"]: raise SystemExit(1)
 

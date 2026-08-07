@@ -1,4 +1,4 @@
-# Scores prioritize review and search; they never replace human judgment.
+# Hard Evidence gates only. Diagnostic scoring may be shown but cannot block completion.
 [weights]
 authority = 0.30
 directness = 0.25
@@ -17,7 +17,6 @@ blog = 0.50
 social = 0.35
 unknown = 0.25
 
-# Half-lives are question defaults, not universal truth. Topic config may override.
 [freshness_half_life_days]
 default = 90
 news = 7
@@ -31,7 +30,6 @@ blog = 90
 unknown = 30
 
 [quality_gates]
-minimum_card_score = 0.40
 minimum_primary_source_ratio = 0.40
 minimum_question_coverage = 0.80
 maximum_high_risk_cards = 0

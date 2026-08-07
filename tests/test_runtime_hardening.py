@@ -34,11 +34,19 @@ def test_version_sensitive_design_requires_version_or_commit():
 
 
 def valid_worker():
-    return {"status":"complete","question_id":"q-001","overlap_key":"x","budget_profile":"standard","coverage_status":"sufficient","queries_run":[],"source_clusters":[],"source_attempts":[],"evidence_cards":[],"rejected_sources":[],"contradictions":[],"gaps":[],"suggested_followups":[],"budget_used":{"tool_calls":4,"search_queries":2,"source_pages":3,"duration_minutes":2,"same_url_attempts_max":1,"output_reserve_ratio":0.25},"stop_reason":"acceptance_criteria_met"}
+    return {
+        "worker_result_version":2,"status":"complete","question_id":"q-001","overlap_key":"x","budget_profile":"standard","coverage_status":"sufficient",
+        "queries_run":[{"id":"query-1","query":"site:example.com fact","intent":"primary_source","provider":"native_web","language":"en","time_anchor":None,"fallback_of":None,"outcome":"primary_candidate_found"}],
+        "source_attempts":[{"id":"src-1","url":"https://example.com","normalized_url":"https://example.com/","status":"accepted","eligible_for_evidence":True,"tool":"direct_fetch","access_mode":"public_static","content_sha256":"a"*64,"query_id":"query-1","discovery_method":"search","discovered_via_source_attempt_id":None}],
+        "evidence_cards":[{"id":"ev-1","statement":"Fact","quote":"Fact","stance":"support","confidence":0.8,"independence_group":"origin","source_attempt_id":"src-1","prompt_injection_risk":"low","version_compatibility":"not_applicable","source":{"url":"https://example.com","title":"Fact","publisher":"Example","source_type":"official"}}],
+        "gaps":[],"budget_used":{"tool_calls":2,"search_queries":1,"source_pages":1},"stop_reason":"acceptance_criteria_met"
+    }
 
 
-def test_worker_contract_enforces_budget_and_reserve():
-    result=valid_worker(); assert validate_worker_result(result,profile_limits("standard"))["valid"]; result["budget_used"]["output_reserve_ratio"]=0.1; assert not validate_worker_result(result,profile_limits("standard"))["valid"]
+def test_worker_contract_enforces_compact_observable_budget():
+    result=valid_worker(); assert validate_worker_result(result,profile_limits("standard"))["valid"]
+    result["budget_used"]["search_queries"]=7
+    assert not validate_worker_result(result,profile_limits("standard"))["valid"]
 
 
 def test_http_error_page_is_not_evidence(): assert not assess_response(200,"<title>404: Not Found</title>")["eligible_for_evidence"]
