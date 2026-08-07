@@ -42,20 +42,24 @@ def consume_next_call(
                 "run_id": run_id,
                 "profile": profile,
                 "next_calls": 0,
-                "action_counts": {},
+                "last_action_key": None,
+                "same_action_streak": 0,
                 "started_at": utc_now(),
             }
         projected_calls = int(state.get("next_calls", 0)) + 1
-        counts = dict(state.get("action_counts") or {})
-        projected_action = int(counts.get(action_key, 0)) + 1
+        projected_streak = (
+            int(state.get("same_action_streak", 0)) + 1
+            if state.get("last_action_key") == action_key
+            else 1
+        )
         violations: list[str] = []
         if projected_calls > limits["max_next_calls_per_run"]:
             violations.append(
                 f"next calls {projected_calls} exceed {limits['max_next_calls_per_run']}"
             )
-        if projected_action > limits["max_same_action_repeats"]:
+        if projected_streak > limits["max_same_action_repeats"]:
             violations.append(
-                f"action {action_key} repeated {projected_action} times; "
+                f"action {action_key} repeated {projected_streak} consecutive times; "
                 f"limit is {limits['max_same_action_repeats']}"
             )
         if violations:
@@ -67,15 +71,15 @@ def consume_next_call(
                 "violations": violations,
                 "usage": {
                     "next_calls": int(state.get("next_calls", 0)),
-                    "same_action_repeats": int(counts.get(action_key, 0)),
+                    "same_action_repeats": int(state.get("same_action_streak", 0)),
                 },
                 "limits": limits,
             }
-        counts[action_key] = projected_action
         state.update(
             profile=profile,
             next_calls=projected_calls,
-            action_counts=counts,
+            last_action_key=action_key,
+            same_action_streak=projected_streak,
             last_phase=phase,
             last_next_action=next_action,
             updated_at=utc_now(),
@@ -86,7 +90,7 @@ def consume_next_call(
             "violations": [],
             "usage": {
                 "next_calls": projected_calls,
-                "same_action_repeats": projected_action,
+                "same_action_repeats": projected_streak,
             },
             "limits": limits,
         }
