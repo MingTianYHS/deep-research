@@ -1,17 +1,67 @@
 {
+  "worker_result_version": 2,
+  "worker_result_id": "worker-example-001",
+  "run_id": "run-example-001",
   "status": "complete",
   "question_id": "q-001",
   "overlap_key": "example-official-report",
   "budget_profile": "standard",
   "coverage_status": "sufficient",
-  "queries_run": [{"query": "official AI market report 2026", "purpose": "primary-source discovery", "result_yield": 1}],
-  "source_clusters": [{"independence_group": "example-organization", "origin": "Example Organization report", "member_urls": ["https://example.com/report"]}],
-  "source_attempts": [{"id": "src-001", "url": "https://example.com/report?utm_source=search", "normalized_url": "https://example.com/report", "status": "accepted", "eligible_for_evidence": true, "tool": "direct_fetch", "access_mode": "public_static", "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http_status": 200, "source_version": "2026-07", "reason": null}],
-  "evidence_cards": [{"source_attempt_id": "src-001", "source": {"url": "https://example.com/report?utm_source=search", "title": "Example official report", "publisher": "Example Organization", "published_at": "2026-07-01", "source_type": "official"}, "statement": "Example Organization published the report in July 2026.", "quote": "Published July 2026.", "locator": "Report header", "stance": "support", "relevance": "background", "confidence": 0.95, "independence_group": "example-organization", "prompt_injection_risk": "low", "version_compatibility": "not_applicable", "tags": ["example"]}],
-  "rejected_sources": [],
-  "contradictions": [],
+  "queries_run": [
+    {
+      "id": "query-001",
+      "query": "official AI market report 2026",
+      "intent": "primary_source",
+      "provider": "native_web",
+      "language": "en",
+      "time_anchor": "2026",
+      "fallback_of": null,
+      "outcome": "primary_candidate_found"
+    }
+  ],
+  "source_attempts": [
+    {
+      "id": "src-001",
+      "url": "https://example.com/report?utm_source=search",
+      "normalized_url": "https://example.com/report",
+      "status": "accepted",
+      "eligible_for_evidence": true,
+      "tool": "direct_fetch",
+      "access_mode": "public_static",
+      "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "http_status": 200,
+      "source_version": "2026-07",
+      "query_id": "query-001",
+      "discovery_method": "search",
+      "discovered_via_source_attempt_id": null,
+      "reason": null
+    }
+  ],
+  "evidence_cards": [
+    {
+      "source_attempt_id": "src-001",
+      "source": {
+        "url": "https://example.com/report?utm_source=search",
+        "title": "Example official report",
+        "publisher": "Example Organization",
+        "published_at": "2026-07-01",
+        "source_type": "official"
+      },
+      "statement": "Example Organization published the report in July 2026.",
+      "quote": "Published July 2026.",
+      "locator": "Report header",
+      "stance": "support",
+      "confidence": 0.95,
+      "independence_group": "example-organization",
+      "prompt_injection_risk": "low",
+      "version_compatibility": "not_applicable"
+    }
+  ],
   "gaps": [],
-  "suggested_followups": [],
-  "budget_used": {"tool_calls": 4, "search_queries": 1, "source_pages": 1, "duration_minutes": 2, "same_url_attempts_max": 1, "output_reserve_ratio": 0.25},
+  "budget_used": {
+    "tool_calls": 2,
+    "search_queries": 1,
+    "source_pages": 1
+  },
   "stop_reason": "acceptance_criteria_met"
 }
