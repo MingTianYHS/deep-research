@@ -9,7 +9,7 @@ import json
 
 import researchctl
 import topicctl
-from lib.workflow import derive_workflow
+from lib.lean_workflow import derive_workflow
 
 
 def cmd_new(args: argparse.Namespace) -> None:
