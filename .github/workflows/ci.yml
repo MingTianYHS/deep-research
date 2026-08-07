@@ -31,6 +31,46 @@ jobs:
       - name: Unit tests
         run: python scripts/run_tests_ci.py
 
+  diagnose:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        file:
+          - test_agent_contracts.py
+          - test_claims_citations.py
+          - test_completion_scope.py
+          - test_coordinator_lease.py
+          - test_costs_export.py
+          - test_critic_reviews.py
+          - test_ingest_integrity.py
+          - test_lean_claims.py
+          - test_lean_workflow.py
+          - test_migrations.py
+          - test_orchestration_budget.py
+          - test_providers_release.py
+          - test_quality_audit.py
+          - test_query_discipline.py
+          - test_research_entrypoint.py
+          - test_research_quality.py
+          - test_researchctl.py
+          - test_run_level_disconfirmation.py
+          - test_runtime.py
+          - test_runtime_hardening.py
+          - test_source_block_pages.py
+          - test_topic_context.py
+          - test_topicctl.py
+          - test_worker_recovery.py
+          - test_workflow_next.py
+          - test_workspace_paths.py
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip pytest
+      - run: python -m pytest -q tests/${{ matrix.file }}
+
   release-smoke:
     needs: test
     runs-on: ubuntu-latest
