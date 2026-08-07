@@ -12,6 +12,8 @@ All notable changes to this project are documented here.
 - Search-free SynthesisResult v1 validation and guarded report persistence through `agentctl.py`.
 - Regression coverage for complete researcher payloads, stale Critic approvals, targeted remediation, and synthesis snapshot boundaries.
 - State-driven `research.py next` coordinator contracts with explicit phases, next actions, named Agent assignments, blockers, progress, and user-input requirements.
+- Explicit `mechanical_lineage` audits for low-token report provenance checks.
+- Lean workflow defaults for lite/standard profiles with strict deep-profile preservation.
 
 ### Changed
 
@@ -21,12 +23,16 @@ All notable changes to this project are documented here.
 - `research_critic` approvals are invalidated when reviewed state changes; `changes_required` now routes to Researcher remediation before recheck.
 - `research_synthesizer` is strictly search-free and returns a validated JSON envelope instead of unbound Markdown.
 - Codex remains the only upper-level orchestrator; Python validates legal workflow actions and contracts.
+- Lite and standard profiles replace the second post-synthesis Critic pass with a deterministic lineage audit.
+- Lite and standard profiles defer Reflection instead of blocking report delivery or the next run.
+- The deep profile retains independent quote verification and Critic-linked Reflection.
 
 ### Fixed
 
 - Stale Critic approval can no longer satisfy completion after Design, Worker, Evidence, or Claim changes.
 - Critic targeted searches are limited to three and must reference blocker/high findings.
 - Reports cannot be written by synthesis outside the canonical topic `reports/` directory.
+- `qualityctl` audit commands now accept an optional topic slug and work from the current topic workspace.
 
 ## 0.9.0rc1 - 2026-08-02
 
