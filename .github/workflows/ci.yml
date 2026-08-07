@@ -30,6 +30,18 @@ jobs:
         run: python -m pip install --upgrade pip pytest
       - name: Unit tests
         run: python scripts/run_tests_ci.py
+
+  release-smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install test runner
+        run: python -m pip install --upgrade pip pytest
       - name: Release checks
         run: python .agents/skills/deep-research/scripts/releasectl.py release-check --strict
       - name: End-to-end smoke test

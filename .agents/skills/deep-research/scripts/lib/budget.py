@@ -7,8 +7,6 @@ USAGE_TO_LIMIT = {
     "queries": "max_queries",
     "pages": "max_pages",
     "evidence_cards": "max_evidence_cards",
-    "estimated_input_tokens": "estimated_input_tokens",
-    "estimated_output_tokens": "estimated_output_tokens",
 }
 
 
@@ -26,7 +24,12 @@ def report(state: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
         key: remaining[key] / max(1, int(profile[limit]))
         for key, limit in USAGE_TO_LIMIT.items()
     }
-    return {"limits": profile, "usage": usage, "remaining": remaining, "remaining_ratio": min(ratios.values())}
+    return {
+        "limits": {limit: profile[limit] for limit in USAGE_TO_LIMIT.values()},
+        "usage": {key: int(usage.get(key, 0)) for key in USAGE_TO_LIMIT},
+        "remaining": remaining,
+        "remaining_ratio": min(ratios.values()),
+    }
 
 
 def apply_delta(
