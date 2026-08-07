@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Lean runtime v2
+
+- Replace lite/standard per-Claim coordinator loops with one deterministic, idempotent Claim sync grouped by research question.
+- Skip the separate report scaffold turn for lite/standard and synthesize directly into the final report path.
+- Reduce the report contract to six body sections and generate quality diagnostics outside model-authored prose.
+- Replace the weighted report score with explicit hard gates while retaining citation, independence, risk, and quote-audit safeguards.
+- Preserve the strict deep workflow and explicit Claim review.
+
 ### Added
 
 - Versioned Researcher, Critic, and Synthesis assignments with explicit instruction-inheritance notices.

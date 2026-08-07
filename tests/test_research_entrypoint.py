@@ -24,6 +24,7 @@ def test_public_commands_are_small_and_workflow_focused():
         "start",
         "status",
         "next",
+        "claim-sync",
         "report",
         "finish",
         "validate",
