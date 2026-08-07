@@ -14,6 +14,30 @@ def write_state(root: Path, profile: str) -> None:
     (root / "state.json").write_text(
         json.dumps({"budget_profile": profile}), encoding="utf-8"
     )
+    config = root / "config"
+    config.mkdir(exist_ok=True)
+    (config / "orchestration.toml").write_text(
+        """
+[lite]
+max_next_calls_per_run = 25
+max_same_action_repeats = 2
+max_critic_reviews = 1
+max_targeted_searches = 1
+
+[standard]
+max_next_calls_per_run = 45
+max_same_action_repeats = 3
+max_critic_reviews = 1
+max_targeted_searches = 2
+
+[deep]
+max_next_calls_per_run = 100
+max_same_action_repeats = 8
+max_critic_reviews = 4
+max_targeted_searches = 3
+""".strip(),
+        encoding="utf-8",
+    )
 
 
 def test_standard_defers_reflection(monkeypatch, tmp_path):
