@@ -10,6 +10,7 @@ import json
 import researchctl
 import topicctl
 from lib.coordinator_budget import consume_next_call
+from lib.io_utils import read_json
 from lib.lean_workflow import derive_workflow
 
 
@@ -68,7 +69,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     result = derive_workflow(root, researchctl.SKILL_DIR)
     run_id = result.get("active_run_id")
     if run_id:
-        state = researchctl.read_json(root / "state.json", {})
+        state = read_json(root / "state.json", {})
         profile = str(state.get("budget_profile") or "standard")
         budget = consume_next_call(
             root,
