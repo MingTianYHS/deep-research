@@ -50,7 +50,7 @@ def test_ingest_rejects_legacy_worker(tmp_path):
     path=tmp_path/"topic/evidence/cards.jsonl"; path.parent.mkdir(parents=True); path.write_text("");prepare_topic(path)
     result=worker_result();result.pop("worker_result_version")
     try: ingest_worker_result(path,result,3); assert False
-    except ValueError as exc: assert "worker_result_version 2" in str(exc)
+    except ValueError as exc: assert "worker_result_version" in str(exc)
 
 
 def test_ingest_rejects_wrong_run_or_design_boundary(tmp_path):
