@@ -12,6 +12,7 @@ import topicctl
 from lib.coordinator_budget import consume_next_call
 from lib.coordinator_lease import acquire_or_refresh, resolve_coordinator_id
 from lib.io_utils import read_json
+from lib.lean_claims import sync_run_claims
 from lib.lean_workflow import derive_workflow
 
 
@@ -49,11 +50,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     state_run_id = state.get("active_run_id")
     lease = None
     if state_run_id:
-        lease = acquire_or_refresh(
-            root,
-            str(state_run_id),
-            resolve_coordinator_id(getattr(args, "coordinator_id", None)),
-        )
+        lease = acquire_or_refresh(root, str(state_run_id), resolve_coordinator_id(getattr(args, "coordinator_id", None)))
         if not lease["allowed"]:
             print(json.dumps(_lease_blocked(str(state_run_id), lease), ensure_ascii=False, indent=2))
             return
@@ -68,6 +65,17 @@ def cmd_next(args: argparse.Namespace) -> None:
         if not budget["allowed"]:
             result = _budget_exhausted(result, budget)
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_claim_sync(args: argparse.Namespace) -> None:
+    root = researchctl.topic_dir(args.topic)
+    state = read_json(root / "state.json", {})
+    run_id = state.get("active_run_id")
+    if not run_id:
+        raise SystemExit("claim-sync requires an active run")
+    if str(state.get("budget_profile") or "standard") == "deep":
+        raise SystemExit("deep profile requires explicit Claim review")
+    print(json.dumps(sync_run_claims(root, str(run_id)), ensure_ascii=False, indent=2))
 
 
 def cmd_report(args: argparse.Namespace) -> None:
@@ -107,6 +115,7 @@ def parser() -> argparse.ArgumentParser:
     start = sub.add_parser("start", help="Start a baseline, incremental, or deep-dive Run."); _topic_argument(start); start.add_argument("--mode", choices=["baseline", "initial", "incremental", "deep-dive"], default="initial"); start.set_defaults(func=cmd_start)
     status = sub.add_parser("status", help="Show topic state and record counts."); _topic_argument(status); status.set_defaults(func=cmd_status)
     next_step = sub.add_parser("next", help="Return the next legal coordinator action from persisted workspace state."); _topic_argument(next_step); next_step.add_argument("--coordinator-id", help="Stable identity for enforcing one coordinator per topic run"); next_step.set_defaults(func=cmd_next)
+    claim_sync = sub.add_parser("claim-sync", help="Materialize compact Claims for a lite/standard run."); _topic_argument(claim_sync); claim_sync.set_defaults(func=cmd_claim_sync)
     report = sub.add_parser("report", help="Create a report inside the canonical topic workspace."); _topic_argument(report); report.add_argument("--type", choices=["initial", "update", "final"], default="initial"); report.add_argument("--title"); report.add_argument("--output"); report.add_argument("--allow-language-mismatch", action="store_true"); report.set_defaults(func=cmd_report)
     finish = sub.add_parser("finish", help="Close the active Run after all required gates."); _topic_argument(finish); finish.add_argument("--status", choices=["complete", "partial", "failed"], default="complete"); finish.add_argument("--note", default=""); finish.set_defaults(func=cmd_finish)
     validate = sub.add_parser("validate", help="Validate naming, workspace, design, and records."); _topic_argument(validate); validate.add_argument("--allow-language-mismatch", action="store_true"); validate.set_defaults(func=cmd_validate)
