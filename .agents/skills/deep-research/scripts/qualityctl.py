@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hard Evidence gates, diagnostic quality metrics, and quote-fidelity audits."""
+"""Hard Evidence/report gates, diagnostic metrics, and quote-fidelity audits."""
 from __future__ import annotations
 
 import argparse
@@ -11,12 +11,14 @@ from pathlib import Path
 from lib.audit import create_audit, mechanically_verify_audit, validate_audit
 from lib.io_utils import atomic_write_json, iter_jsonl, read_json
 from lib.quality import evaluate, load_policy
+from lib.report_rubric import evaluate_report, load_rubric
 from lib.workspace_paths import workspace_root
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = SKILL_DIR.parents[2]
 WORKSPACE_ROOT = workspace_root(REPO_ROOT)
 POLICY_FILE = SKILL_DIR / "config/source_policy.toml"
+RUBRIC_FILE = SKILL_DIR / "config/report_rubric.toml"
 
 
 def root_for(slug: str | None) -> Path:
@@ -41,6 +43,14 @@ def cmd_quality(args: argparse.Namespace) -> None:
         "maximum_high_risk_cards": len(result["high_risk_cards"]) <= int(gates["maximum_high_risk_cards"]),
     }
     result["passes_all_gates"] = all(result["gates"].values()); result["scoring_mode"] = "hard_gates_only"
+    if args.output: atomic_write_json(Path(args.output), result)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if args.require_gates and not result["passes_all_gates"]: raise SystemExit(1)
+
+
+def cmd_report(args: argparse.Namespace) -> None:
+    root = root_for(args.slug)
+    result = evaluate_report(Path(args.report), evidence_map(root), load_rubric(RUBRIC_FILE))
     if args.output: atomic_write_json(Path(args.output), result)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if args.require_gates and not result["passes_all_gates"]: raise SystemExit(1)
@@ -74,15 +84,16 @@ def _topic_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("slug", nargs="?", help="Topic name; omit inside its workspace")
 
 
-def _audit_arguments(parser: argparse.ArgumentParser) -> None:
+def _report_arguments(parser: argparse.ArgumentParser) -> None:
     _topic_argument(parser); parser.add_argument("--report", required=True); parser.add_argument("--output")
 
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="qualityctl"); sub = p.add_subparsers(dest="command", required=True)
     quality = sub.add_parser("quality-report"); _topic_argument(quality); quality.add_argument("--as-of"); quality.add_argument("--output"); quality.add_argument("--require-gates", action="store_true"); quality.set_defaults(func=cmd_quality)
-    init = sub.add_parser("audit-init"); _audit_arguments(init); init.set_defaults(func=cmd_audit_init)
-    mechanical = sub.add_parser("audit-mechanical"); _audit_arguments(mechanical); mechanical.set_defaults(func=cmd_audit_mechanical)
+    report = sub.add_parser("report-check"); _report_arguments(report); report.add_argument("--require-gates", action="store_true"); report.set_defaults(func=cmd_report)
+    init = sub.add_parser("audit-init"); _report_arguments(init); init.set_defaults(func=cmd_audit_init)
+    mechanical = sub.add_parser("audit-mechanical"); _report_arguments(mechanical); mechanical.set_defaults(func=cmd_audit_mechanical)
     validate = sub.add_parser("audit-validate"); validate.add_argument("--audit", required=True); validate.add_argument("--final", action="store_true"); validate.set_defaults(func=cmd_audit_validate)
     return p
 
