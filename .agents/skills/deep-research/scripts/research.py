@@ -9,6 +9,7 @@ import json
 
 import researchctl
 import topicctl
+from lib.coordinator_budget import consume_next_call
 from lib.lean_workflow import derive_workflow
 
 
@@ -44,9 +45,42 @@ def cmd_status(args: argparse.Namespace) -> None:
     researchctl.cmd_status(argparse.Namespace(slug=args.topic))
 
 
+def _budget_exhausted(result: dict, budget: dict) -> dict:
+    return {
+        **result,
+        "phase": "coordinator_budget_exhausted",
+        "next_action": "request_budget_decision",
+        "command": None,
+        "agent": None,
+        "assignments": [],
+        "requires_user_input": True,
+        "blockers": budget["violations"],
+        "coordinator_budget": budget,
+        "coordinator_instruction": (
+            "Stop automatic orchestration. Ask the user whether to finish partial, "
+            "inspect the repeated phase, or explicitly continue with a larger profile."
+        ),
+    }
+
+
 def cmd_next(args: argparse.Namespace) -> None:
     root = researchctl.topic_dir(args.topic)
     result = derive_workflow(root, researchctl.SKILL_DIR)
+    run_id = result.get("active_run_id")
+    if run_id:
+        state = researchctl.read_json(root / "state.json", {})
+        profile = str(state.get("budget_profile") or "standard")
+        budget = consume_next_call(
+            root,
+            str(run_id),
+            profile,
+            str(result.get("phase") or "unknown"),
+            str(result.get("next_action") or "unknown"),
+            researchctl.SKILL_DIR / "config/orchestration.toml",
+        )
+        result["coordinator_budget"] = budget
+        if not budget["allowed"]:
+            result = _budget_exhausted(result, budget)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
