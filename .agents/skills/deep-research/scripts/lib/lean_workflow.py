@@ -40,14 +40,18 @@ def _run_has_disconfirmation(root: Path, run_id: str) -> bool:
 
 def _compact_assignments(result: dict[str, Any], root: Path, run_id: str, profile: str) -> dict[str, Any]:
     assignments = [dict(item) for item in (result.get("assignments") or [])]
-    if not assignments or result.get("agent") != "topic_researcher": return result
+    if not assignments or result.get("agent") != "topic_researcher" or not any(item.get("question_id") for item in assignments):
+        return result
     already_done = _run_has_disconfirmation(root, run_id)
     first_standard = None
     if profile == "standard" and not already_done:
-        candidates = [item for item in assignments if not item.get("remediation")]
-        if candidates: first_standard = min(candidates, key=lambda item: str(item.get("question_id") or ""))
+        candidates = [item for item in assignments if item.get("question_id") and not item.get("remediation")]
+        if candidates: first_standard = min(candidates, key=lambda item: str(item["question_id"]))
     compacted = []
     for item in assignments:
+        if not item.get("question_id"):
+            compacted.append(item)
+            continue
         remediation = item.get("remediation") or {}
         required = remediation.get("intent") == "disconfirming" or item is first_standard
         item["disconfirming_required"] = bool(required)
