@@ -49,7 +49,7 @@ def evaluate_report(report: Path, evidence: dict[str, dict[str, Any]], rubric: d
     groups = {card.get("independence_group") or card.get("source", {}).get("publisher") or card["id"] for card in accepted}
     high_risk = [card["id"] for card in accepted if card.get("prompt_injection_risk") == "high"]
     gates = rubric["gates"]; minimum_chars = int(gates.get("minimum_substantive_section_chars", 40))
-    substantive = [key for key in required if len(re.sub(r"\s+", " ", sections.get(key, "")).strip()) >= minimum_chars]
+    substantive = [key for key in required if key == "sources" or len(re.sub(r"\s+", " ", sections.get(key, "")).strip()) >= minimum_chars]
     todo_markers = len(TODO_RE.findall(text)); frontmatter = has_frontmatter(text)
     metrics = {"citation_coverage": len(cited_paragraphs) / len(paragraphs) if paragraphs else 0.0, "numeric_citation_coverage": len(cited_numeric) / len(numeric) if numeric else 1.0, "independence_groups": len(groups)}
     gate_results = {

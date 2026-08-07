@@ -28,17 +28,7 @@ def _direct_synthesis(result: dict[str, Any], root: Path, run_id: str) -> dict[s
     if not reviews:
         return None
     report = root / "reports" / f"{root.name}-final.md"
-    return {
-        **result,
-        "phase": "synthesis",
-        "next_action": "invoke_research_synthesizer",
-        "agent": "research_synthesizer",
-        "command": "agentctl.py synthesis-save --file synthesis-result.json",
-        "assignments": [build_synthesis_assignment(root, run_id, report, reviews[-1])],
-        "blockers": ["Write the compact report directly; no separate scaffold step is required."],
-        "progress": {**dict(result.get("progress") or {}), "report": str(report), "scaffold_skipped": True},
-        "coordinator_instruction": "Invoke the synthesizer once and save its compact six-section report. Do not create a separate report scaffold.",
-    }
+    return {**result, "phase": "synthesis", "next_action": "invoke_research_synthesizer", "agent": "research_synthesizer", "command": "agentctl.py synthesis-save --file synthesis-result.json", "assignments": [build_synthesis_assignment(root, run_id, report, reviews[-1])], "blockers": [], "progress": {**dict(result.get("progress") or {}), "report": str(report), "scaffold_skipped": True}, "coordinator_instruction": "Invoke the synthesizer once and save its compact six-section report. Do not create a separate report scaffold."}
 
 
 def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
@@ -55,14 +45,7 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
         return _ready_to_start(result, str(run_id) if run_id else None)
 
     if result.get("phase") == "claim_review":
-        return {
-            **result,
-            "next_action": "sync_compact_run_claims",
-            "command": "research.py claim-sync",
-            "agent": None,
-            "blockers": [],
-            "coordinator_instruction": "Run the deterministic one-command Claim sync. Do not perform per-Claim create/link/status loops in lite/standard mode.",
-        }
+        return {**result, "next_action": "sync_compact_run_claims", "command": "research.py claim-sync", "agent": None, "blockers": [], "coordinator_instruction": "Run the deterministic one-command Claim sync. Do not perform per-Claim create/link/status loops in lite/standard mode."}
 
     if result.get("phase") == "critic_remediation":
         assignments = list(result.get("assignments") or [])
