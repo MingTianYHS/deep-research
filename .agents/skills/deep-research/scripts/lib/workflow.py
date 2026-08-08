@@ -355,7 +355,8 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
             agent="research_critic",
             assignments=[build_critic_assignment(root, active_run_id, previous_id)],
             blockers=["The previous approved Critic Review is stale."]
-            if latest_review and latest_review.get("status") in {"approved", "approved_with_findings"}
+            if latest_review
+            and latest_review.get("status") in {"approved", "approved_with_findings"}
             else [],
             progress={**progress, "previous_critic_review_id": previous_id},
         )
@@ -424,7 +425,7 @@ def derive_workflow(root: Path, skill_dir: Path) -> dict[str, Any]:
                 )
             ],
             blockers=[
-                "Synthesizer must return SynthesisResult v1 and may not search."
+                "Synthesizer must return SynthesisResult v2 and may not search."
             ],
             progress={**progress, "report": str(report)},
         )
