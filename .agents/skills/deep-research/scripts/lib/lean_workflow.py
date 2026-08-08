@@ -37,7 +37,7 @@ def _run_has_disconfirmation(root: Path, run_id: str) -> bool:
 
 
 def _needs_new_search(assignment: dict[str, Any]) -> bool:
-    return (assignment.get("reuse_plan") or {}).get("recommended_action") != "reuse_existing_evidence_before_search"
+    return (assignment.get("reuse_plan") or {}).get("recommended_action") == "targeted_discovery"
 
 
 def _compact_assignments(result: dict[str, Any], root: Path, run_id: str, profile: str) -> dict[str, Any]:
