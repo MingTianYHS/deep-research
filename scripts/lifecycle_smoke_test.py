@@ -46,7 +46,8 @@ def new_worker(worker_id: str, run_id: str, source_id: str, evidence_id: str, ur
 
 
 def reuse_worker(run_id: str, question_id: str) -> dict:
-    return {"worker_result_version": 2, "worker_result_id": "worker-incremental-reuse", "run_id": run_id, "status": "complete", "question_id": question_id, "overlap_key": f"incremental-{question_id}", "budget_profile": "lite", "coverage_status": "sufficient", "queries_run": [], "source_attempts": [], "evidence_cards": [], "reused_evidence_ids": ["ev-1", "ev-2"], "gaps": [], "budget_used": {"tool_calls": 0, "search_queries": 0, "source_pages": 0}, "stop_reason": "existing_evidence_sufficient"}
+    rationale = "The user-selected continuation explicitly names this fresh Evidence and the lifecycle assertion is unchanged."
+    return {"worker_result_version": 2, "worker_result_id": "worker-incremental-reuse", "run_id": run_id, "status": "complete", "question_id": question_id, "overlap_key": f"incremental-{question_id}", "budget_profile": "lite", "coverage_status": "sufficient", "queries_run": [], "source_attempts": [], "evidence_cards": [], "reused_evidence_ids": ["ev-1", "ev-2"], "reuse_rationale": {"ev-1": rationale, "ev-2": rationale}, "gaps": [], "budget_used": {"tool_calls": 0, "search_queries": 0, "source_pages": 0}, "stop_reason": "existing_evidence_sufficient"}
 
 
 def report_text(label: str) -> str:
