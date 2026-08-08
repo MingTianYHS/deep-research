@@ -6,24 +6,10 @@ from pathlib import Path
 from typing import Any
 
 REQUIRED_SKILL_FILES = [
-    "SKILL.md", "config/tools.toml", "config/budgets.toml", "config/providers.toml",
-    "config/source_policy.toml", "config/report_rubric.toml", "scripts/research.py",
-    "scripts/researchctl.py", "scripts/topicctl.py", "scripts/agentctl.py",
-    "scripts/qualityctl.py", "scripts/releasectl.py", "scripts/designctl.py",
-    "scripts/runtimectl.py", "scripts/lib/workflow.py", "scripts/lib/agent_contracts.py",
-    "scripts/lib/agent_snapshots.py", "scripts/lib/workspace_paths.py",
-    "scripts/lib/runtime_preflight.py", "scripts/lib/worker_contract.py",
-    "scripts/lib/worker_context.py", "scripts/lib/critic_reviews.py",
-    "scripts/lib/completion.py", "scripts/lib/source_attempts.py",
-    "scripts/lib/rollout_audit.py", "references/RESEARCH_DESIGN.md",
-    "references/QUERY_CRAFT.md", "references/TOOL_ROUTING.md",
+    "SKILL.md", "config/tools.toml", "config/budgets.toml", "config/providers.toml", "config/source_policy.toml", "config/report_rubric.toml", "scripts/research.py", "scripts/researchctl.py", "scripts/topicctl.py", "scripts/agentctl.py", "scripts/qualityctl.py", "scripts/releasectl.py", "scripts/designctl.py", "scripts/runtimectl.py", "scripts/lib/workflow.py", "scripts/lib/agent_contracts.py", "scripts/lib/agent_snapshots.py", "scripts/lib/research_memory.py", "scripts/lib/workspace_paths.py", "scripts/lib/runtime_preflight.py", "scripts/lib/worker_contract.py", "scripts/lib/worker_context.py", "scripts/lib/critic_reviews.py", "scripts/lib/completion.py", "scripts/lib/source_attempts.py", "scripts/lib/rollout_audit.py", "references/RESEARCH_DESIGN.md", "references/QUERY_CRAFT.md", "references/TOOL_ROUTING.md",
 ]
 REQUIRED_AGENTS = ["topic-researcher.toml", "research-critic.toml", "research-synthesizer.toml"]
-SECRET_PATTERNS = [
-    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
-    re.compile(r"(?i)authorization\s*:\s*bearer\s+[A-Za-z0-9._-]{12,}"),
-    re.compile(r"(?i)(?:api[_-]?key|secret|token)\s*[=:]\s*['\"]?[A-Za-z0-9_-]{16,}"),
-]
+SECRET_PATTERNS = [re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"), re.compile(r"(?i)authorization\s*:\s*bearer\s+[A-Za-z0-9._-]{12,}"), re.compile(r"(?i)(?:api[_-]?key|secret|token)\s*[=:]\s*['\"]?[A-Za-z0-9_-]{16,}")]
 
 
 def project_version(repo_root: Path) -> str | None:
@@ -33,8 +19,7 @@ def project_version(repo_root: Path) -> str | None:
 
 
 def skill_version(skill_md: str) -> str | None:
-    match = re.search(r"(?m)^\s+version:\s*[\"']?([^\"'\s]+)", skill_md)
-    return match.group(1) if match else None
+    match = re.search(r"(?m)^\s+version:\s*[\"']?([^\"'\s]+)", skill_md); return match.group(1) if match else None
 
 
 def check_repo(repo_root: Path) -> dict[str, Any]:

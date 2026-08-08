@@ -1,22 +1,25 @@
 # Runtime commands
 
-## Coordinator loop
+## User-directed coordinator
 
-The main Codex session is the only upper-level orchestrator. Run `research.py next` at session start and after every successful lifecycle write. Pass each returned versioned assignment unchanged to its named read-only Agent.
-
-Custom subagents must not be assumed to inherit the parent Skill prompt or conversation. Required search craft and safety rules live in the Agent TOML plus the explicit assignment payload.
+The main Codex session is the only coordinator. Run `research.py brief` before research to load the bounded reuse plan, then `research.py next` after lifecycle writes.
 
 ```bash
+python "$SKILL/scripts/research.py" brief
 python "$SKILL/scripts/research.py" next
 ```
+
+After a Run is delivered, `next` returns `awaiting_user_research_request`. Present the report and `plans/research-backlog.json`, then stop. A new Run may start only after the user explicitly asks to continue, refresh, or investigate a selected gap.
 
 ## Versioned handoffs
 
 ```text
 ResearcherAssignment v1 → topic_researcher → Worker Result v2
 CriticAssignment v1 → research_critic → Critic Review v2
-SynthesisAssignment v1 → research_synthesizer → SynthesisResult v1
+SynthesisAssignment v1 → research_synthesizer → SynthesisResult v2
 ```
+
+ResearcherAssignment includes research mode, last-Run time anchor, existing Evidence, known source URLs, prior Queries, relevant Claims, and reuse rules. A lite/standard Worker may return explicit reused Evidence with zero tool usage; Deep may not.
 
 Persist results internally:
 
@@ -26,9 +29,14 @@ python "$SKILL/scripts/researchctl.py" critic-save --file critic-review.json
 python "$SKILL/scripts/agentctl.py" synthesis-save --file synthesis-result.json
 ```
 
-Critic Review v2 is bound to Design, current-run Worker, Evidence, and Claim hashes. Any change makes the approval stale and routes `research.py next` to `critic_recheck`. A current `changes_required` review routes up to three serious targeted searches to `topic_researcher` before recheck.
+SynthesisResult v2 is search-free and includes `knowledge_delta` plus at most five `next_research` items. Saving it writes the report, `memory/knowledge-deltas.jsonl`, `memory/current.md`, and `plans/research-backlog.json`.
 
-Synthesizer is search-free. Missing citations or Evidence return `partial` or `blocked`; the coordinator routes the gap back through Researcher, Claim review, and Critic. `agentctl.py synthesis-save` validates Run, Critic approval, snapshot, allowed Claim/Evidence IDs, output language, citations, and report path before writing.
+## Multi-Run state
+
+- A successful first Run sets `baseline_completed=true` independently of Reflection.
+- `start --mode initial` becomes incremental after the baseline.
+- Run usage resets at each start; lifetime usage remains diagnostic.
+- Existing Claims, Evidence, source URLs, prior Queries, reports, audits, and knowledge deltas remain available.
 
 ## Public workflow
 
@@ -36,11 +44,11 @@ Synthesizer is search-free. Missing citations or Evidence return `partial` or `b
 python "$SKILL/scripts/research.py" new "主题名称" --budget standard
 cd "<printed workspace path>"
 codex
-python "$SKILL/scripts/research.py" next
 python "$SKILL/scripts/research.py" plan --questions 5
-python "$SKILL/scripts/research.py" start --mode baseline
-python "$SKILL/scripts/research.py" report --type final
+python "$SKILL/scripts/research.py" start --mode initial
+python "$SKILL/scripts/research.py" next
+python "$SKILL/scripts/research.py" finish --status complete
 python "$SKILL/scripts/research.py" validate
 ```
 
-Finish complete only when `research.py next` returns `ready_to_finish`; otherwise resolve the returned blockers or close partial/failed.
+Finish complete only when `research.py next` returns `ready_to_finish`; otherwise resolve blockers or close partial/failed.

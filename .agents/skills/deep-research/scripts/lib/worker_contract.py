@@ -141,6 +141,12 @@ def validate_worker_result(result: dict[str, Any], limits: dict[str, Any]) -> di
     if result.get("coverage_status") not in COVERAGE: errors.append(f"invalid coverage_status: {result.get('coverage_status')}")
     for key in REQUIRED_LISTS:
         if not isinstance(result.get(key), list): errors.append(f"{key} must be a list")
+    reused = result.get("reused_evidence_ids", [])
+    if not isinstance(reused, list) or any(not isinstance(item, str) or not item for item in reused):
+        errors.append("reused_evidence_ids must be a list of non-empty strings")
+        reused = []
+    elif len(reused) != len(set(reused)):
+        errors.append("reused_evidence_ids must not contain duplicates")
     queries = _validate_queries(result, errors); attempts = _validate_attempts(result, queries, errors); _validate_cards(result, attempts, errors)
     usage = result.get("budget_used")
     if not isinstance(usage, dict): errors.append("budget_used must be an object")
@@ -150,11 +156,17 @@ def validate_worker_result(result: dict[str, Any], limits: dict[str, Any]) -> di
             if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0: errors.append(f"budget_used.{usage_key} must be non-negative")
             elif value > limits[limit_key]: errors.append(f"budget_used.{usage_key} {value} exceeds {limit_key} {limits[limit_key]}")
     if result.get("status") == "complete" and result.get("coverage_status") != "sufficient": errors.append("complete worker result requires sufficient coverage")
+    reuse_only = bool(reused) and not queries and not attempts and not result.get("evidence_cards")
     if result.get("status") == "complete":
-        if not queries: errors.append("complete version-2 worker result requires query trace")
-        if result.get("budget_profile") == "deep" and not any(query.get("intent") == "disconfirming" for query in queries.values()): errors.append("complete deep worker result requires a disconfirming query")
-        if not any(attempt.get("status") == "accepted" and attempt.get("eligible_for_evidence") for attempt in attempts.values()): errors.append("complete version-2 worker result requires an accepted Source Attempt")
-        if not result.get("evidence_cards"): errors.append("complete version-2 worker result requires at least one Evidence Card")
+        if reuse_only:
+            if result.get("budget_profile") == "deep": errors.append("deep worker result cannot complete through reuse only")
+            if result.get("stop_reason") != "existing_evidence_sufficient": errors.append("reuse-only completion requires stop_reason existing_evidence_sufficient")
+            if isinstance(usage, dict) and any(usage.get(key, 0) != 0 for key in USAGE_LIMITS): errors.append("reuse-only completion requires zero tool, query, and page usage")
+        else:
+            if not queries: errors.append("complete version-2 worker result requires query trace or reused Evidence")
+            if result.get("budget_profile") == "deep" and not any(query.get("intent") == "disconfirming" for query in queries.values()): errors.append("complete deep worker result requires a disconfirming query")
+            if not any(attempt.get("status") == "accepted" and attempt.get("eligible_for_evidence") for attempt in attempts.values()): errors.append("complete version-2 worker result requires an accepted Source Attempt")
+            if not result.get("evidence_cards"): errors.append("complete version-2 worker result requires at least one Evidence Card")
     low_yield_fallback = any(query.get("fallback_of") is not None and query.get("outcome") == "low_yield" for query in queries.values())
     if low_yield_fallback:
         if result.get("status") == "complete": errors.append("second low-yield result cannot be complete")
@@ -162,4 +174,4 @@ def validate_worker_result(result: dict[str, Any], limits: dict[str, Any]) -> di
         if not result.get("gaps"): errors.append("second low-yield result requires an explicit gap")
     if result.get("status") == "failed" and not result.get("gaps"): warnings.append("failed worker result should explain at least one gap")
     if result.get("stop_reason") == "acceptance_criteria_met" and result.get("coverage_status") != "sufficient": errors.append("acceptance_criteria_met requires sufficient coverage")
-    return {"valid": not errors, "errors": sorted(set(errors)), "warnings": sorted(set(warnings)), "limits": limits, "budget_verification": "self_reported", "worker_result_version": 2}
+    return {"valid": not errors, "errors": sorted(set(errors)), "warnings": sorted(set(warnings)), "limits": limits, "budget_verification": "self_reported", "worker_result_version": 2, "reuse_only": reuse_only}
