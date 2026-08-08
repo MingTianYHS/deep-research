@@ -94,7 +94,7 @@ def _select_cards(all_cards: list[dict[str, Any]], question_id: str | None, ques
     for index, card in enumerate(all_cards):
         same = card.get("question_id") == question_id; score = (4 if same else 0) + len(target & _tokens(card.get("statement")))
         if same or score > 0: ranked.append((score, index, card))
-    if not ranked: return all_cards[-MAX_EVIDENCE:]
+    if not ranked: return []
     ranked.sort(key=lambda item: (item[0], item[1]), reverse=True); return [item[2] for item in ranked[:MAX_EVIDENCE]]
 
 
