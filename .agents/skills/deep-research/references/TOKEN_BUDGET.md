@@ -1,9 +1,23 @@
-# Token budget and bounded workers
+# Work-unit budget and bounded context
 
-Codex owns provider usage. Budgets combine one canonical `config/budgets.toml` profile with work-unit limits. Worker values are self-reported unless a Rollout is supplied for observed custom-Agent/final-message/tool-call verification.
+Codex owns provider Token accounting. This Skill does not estimate or enforce fictional Token totals. It enforces observable work units: search Queries, fetched source pages, newly accepted Evidence Cards, per-worker tool calls, and coordinator steps.
 
-Profiles define total workers/questions/queries/pages/cards/tokens and per-worker tool calls, queries, pages, same-URL attempts, duration, and 20% output reserve. Parallelism reduces latency, not consumption.
+`state.usage` belongs to the active Run and resets at Run start. `state.lifetime_usage` accumulates diagnostics but never prevents another Run. Explicitly reused Evidence consumes no Query, page, or new-card budget.
 
-Rules: Worker brief below about 1,500 tokens; result below about 2,500; quote target 50-250 words; synthesizer reads accepted cards/claims, not raw pages; every Worker returns a final object; one recovery request for a missing final; one retry plus one fallback; one accepted normalized URL fetch per run.
+Keep inputs bounded:
 
-Stop on acceptance criteria, any work-unit/duration limit, output reserve, two low-yield searches, two failed attempts for one URL, or low marginal evidence yield. Rollout counters are diagnostic and host billing remains authoritative.
+- `memory/current.md`: at most 8,000 characters;
+- reuse plan: at most 8 Evidence, 8 sources, 8 prior Queries, 8 relevant Claims, and 5 backlog items;
+- report follow-up backlog: at most 5 items;
+- Worker output: compact lineage and at most two material gaps;
+- Synthesizer: reviewed Claims/Evidence, never raw pages.
+
+Search rules:
+
+1. reuse sufficient fresh Evidence before tools;
+2. refresh a known stale URL before broad discovery;
+3. do not repeat a historical Query without an explicit reason;
+4. use one strategy-changing fallback after low yield;
+5. stop at acceptance criteria or a hard work-unit budget.
+
+Parallelism reduces latency, not consumption. Host billing remains authoritative.

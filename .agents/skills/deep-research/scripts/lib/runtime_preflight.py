@@ -6,18 +6,9 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-AGENT_FILES = {
-    "topic-researcher.toml": "topic_researcher",
-    "research-critic.toml": "research_critic",
-    "research-synthesizer.toml": "research_synthesizer",
-}
+AGENT_FILES = {"topic-researcher.toml": "topic_researcher", "research-critic.toml": "research_critic", "research-synthesizer.toml": "research_synthesizer"}
 REQUIRED_SKILL_FILES = (
-    "SKILL.md", "config/budgets.toml", "config/tools.toml", "config/providers.toml",
-    "config/source_policy.toml", "config/report_rubric.toml", "references/QUERY_CRAFT.md",
-    "references/TOOL_ROUTING.md", "scripts/research.py", "scripts/researchctl.py",
-    "scripts/topicctl.py", "scripts/agentctl.py", "scripts/runtimectl.py",
-    "scripts/qualityctl.py", "scripts/releasectl.py", "scripts/designctl.py",
-    "scripts/lib/workflow.py", "scripts/lib/agent_contracts.py", "scripts/lib/agent_snapshots.py",
+    "SKILL.md", "config/budgets.toml", "config/tools.toml", "config/providers.toml", "config/source_policy.toml", "config/report_rubric.toml", "references/QUERY_CRAFT.md", "references/TOOL_ROUTING.md", "scripts/research.py", "scripts/researchctl.py", "scripts/topicctl.py", "scripts/agentctl.py", "scripts/runtimectl.py", "scripts/qualityctl.py", "scripts/releasectl.py", "scripts/designctl.py", "scripts/lib/workflow.py", "scripts/lib/agent_contracts.py", "scripts/lib/agent_snapshots.py", "scripts/lib/research_memory.py",
 )
 
 
@@ -43,7 +34,6 @@ def _agent_check(path: Path, expected_name: str) -> list[dict[str, Any]]:
     if value.get("name") != expected_name: return [_item("error", "agent_name", f"Expected agent name {expected_name}, got {value.get('name')}", path)]
     if value.get("sandbox_mode") != "read-only": return [_item("error", "agent_sandbox", "Research agents must use read-only sandbox mode.", path)]
     return [_item("ok", "agent_file", f"Validated custom agent: {expected_name}", path)]
-
 def diagnose(skill_dir: Path, workspace_root: Path, *, home: Path | None = None, python_version: tuple[int, int] | None = None) -> dict[str, Any]:
     skill_dir = skill_dir.expanduser().resolve(); workspace_root = workspace_root.expanduser(); expected_skill = expected_skill_dir(home).resolve(); agents = expected_agent_dir(home); version = python_version or (sys.version_info.major, sys.version_info.minor); checks: list[dict[str, Any]] = []
     checks.append(_item("ok" if skill_dir == expected_skill else "error", "user_skill_layout" if skill_dir == expected_skill else "skill_not_user_level", "User-level Skill location is active." if skill_dir == expected_skill else "Only the user-level Skill layout is supported.", skill_dir if skill_dir == expected_skill else expected_skill))

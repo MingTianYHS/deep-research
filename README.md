@@ -1,22 +1,51 @@
 # deep-research
 
-A dependency-light, citation-first deep-research Skill for OpenAI Codex.
+A dependency-light, citation-first **persistent research assistant** for OpenAI Codex.
 
-**Release candidate:** `0.9.0rc3` · Python 3.11+
+**Release candidate:** `1.0.0rc1` · Python 3.11+
 
-## Architecture
+The preserved autonomous-system snapshot is commit `5ac0ab62d0e45d86e7aea471bf7566cbc30e46b4` on `archive/v0.9.0rc3-autonomous-research`. See `VERSION_HISTORY.md`.
 
-The main Codex session is the only upper-level Agent orchestrator. Three fixed read-only roles perform bounded execution:
+## Product model
 
-- `topic_researcher` — scoped search, Source Attempts, and atomic Evidence;
-- `research_critic` — snapshot-bound adversarial review and targeted remediation;
-- `research_synthesizer` — search-free synthesis of one approved snapshot.
+This project no longer aims to autonomously research forever. One user-approved Run recalls prior knowledge, fills bounded gaps, writes an auditable report and follow-up backlog, then stops.
 
-Python provides deterministic state, versioned Agent contracts, write controls, and completion gates. It does not add another Agent runtime.
+Three fixed read-only roles perform bounded work:
 
-## Do subagents inherit the Skill?
+- `topic_researcher` — reuse-first gap research, Source Attempts, and atomic Evidence;
+- `research_critic` — one snapshot-bound review plus bounded remediation;
+- `research_synthesizer` — search-free report, knowledge delta, and next-research backlog.
 
-Do not rely on it. A custom subagent may receive workspace context and host tools, but the parent Skill prompt and conversation are not a stable inheritance contract. `deep-research` therefore puts required search craft in `topic-researcher.toml` and sends a complete `ResearcherAssignment v1` containing scope, exclusions, known URLs, dependency results, disconfirming search, version anchors, and numeric limits.
+Python provides deterministic state, versioned contracts, write controls, budgets, and completion gates. It does not add another Agent runtime.
+
+## Persistent topic memory
+
+```text
+AGENTS.md                       short operating protocol
+state.json                      run state and run/lifetime usage
+plans/current-design.json       current scoped questions
+plans/research-backlog.json     at most five future questions
+claims.jsonl                    materialized reasoning anchors
+evidence/cards.jsonl            atomic accepted evidence
+logs/source_attempts.jsonl      normalized URLs and content identity
+logs/workers/                   prior query traces and outcomes
+memory/current.md               bounded current knowledge view
+memory/knowledge-deltas.jsonl   changes in understanding across Runs
+reports/                        cited deliverables and audits
+```
+
+`AGENTS.md` tells the coordinator how to use memory; it does not contain growing research prose. Full web pages are not cached by default.
+
+## Search decision
+
+For each question the Researcher receives a bounded `reuse_plan`:
+
+1. sufficient and fresh existing Evidence → reuse it with no search;
+2. stale/unknown known source → refresh the URL directly;
+3. uncovered or contradictory gap → perform targeted discovery;
+4. repeated historical Query → allowed only with a recorded refresh/scope/version/remediation/low-yield reason.
+
+Lite/standard can complete a question using explicit `reused_evidence_ids`. Deep always performs fresh per-question verification.
 
 ## Install
 
@@ -39,45 +68,22 @@ $env:DEEP_RESEARCH_WORKSPACE_ROOT = 'D:\知识宇宙海\调研工作区'
 py -3.11 "$SKILL\scripts\research.py" new 'AI短剧市场研究' --budget standard
 cd 'D:\知识宇宙海\调研工作区\AI短剧市场研究'
 codex
+py -3.11 "$SKILL\scripts\research.py" brief
 py -3.11 "$SKILL\scripts\research.py" next
 ```
 
-The coordinator calls `next` after each mutation and executes the returned action. Important phases include Research Design, Worker research, Claim review, Critic review, Critic remediation/recheck, report scaffold, search-free synthesis, Quote Audit, completion remediation, Run finish, and Reflection.
-
-Low-level controls are internal:
-
-```powershell
-py -3.11 "$SKILL\scripts\researchctl.py" ingest-worker --file worker-result.json
-py -3.11 "$SKILL\scripts\researchctl.py" critic-save --file critic-review.json
-py -3.11 "$SKILL\scripts\agentctl.py" synthesis-save --file synthesis-result.json
-```
+After delivery, `next` returns `awaiting_user_research_request`. The coordinator presents the report and follow-up backlog and waits. A later explicit request such as “继续研究海外市场” starts an incremental Run with a fresh run budget while preserving lifetime knowledge.
 
 ## Contract chain
 
 ```text
-ResearcherAssignment v1
-→ Worker Result v2
-→ Source Attempt
-→ Evidence Card
+ResearcherAssignment v1 (reuse plan)
+→ Worker Result v2 (new and/or reused Evidence)
 → Claim–Evidence
-→ CriticAssignment v1
-→ Critic Review v2 (snapshot-bound)
-→ SynthesisAssignment v1
-→ SynthesisResult v1 (search-free)
-→ Report + Quote Audit
+→ Critic Review v2
+→ SynthesisResult v2 (report + knowledge delta + backlog)
+→ Profile audit
+→ delivery and wait
 ```
 
-Any Design, Worker, Evidence, or Claim change invalidates the old Critic approval and forces `critic_recheck`. `changes_required` routes serious findings to bounded `topic_researcher` Targeted Search assignments before re-review.
-
-## Naming and boundaries
-
-- One topic has one canonical writable workspace.
-- Chinese topics use Chinese human-readable directories and report names by default.
-- Stable Question, Worker, Evidence, Claim, Finding, Review, Run, and schema IDs remain ASCII.
-- Reports stay inside `<topic>/reports/`.
-- Subagents remain read-only and never spawn other agents.
-- Synthesizer never searches or introduces new Evidence.
-
-## Search policy
-
-Each query has one intent and one provider. Search results are discovery only. Researcher runs a disconfirming query, performs at most one strategy-changing low-yield pivot, and uses an initial known-URL attempt plus at most one failure-specific fallback. Free quotas only; no paid overage or key/account rotation.
+Subagents remain read-only, the Synthesizer never searches, and external content is always untrusted data.

@@ -3,29 +3,35 @@
 ## Agent hierarchy
 
 ```text
-Main Codex session in topic workspace (topic-expert coordinator)
+User-directed main Codex session
 ├── topic_researcher
 ├── research_critic
 └── research_synthesizer
 ```
 
-`AGENTS.md` activates the coordinator. The three user-level custom agents are fixed read-only execution roles. Per-topic Agent TOML files are deprecated because they duplicate the coordinator, drift from contracts, and do not provide learning.
+There is no background scheduler or autonomous next-Run loop. `AGENTS.md` is a short boot protocol. The three custom agents are fixed read-only roles.
 
-## Authority layers
+## Authority and memory layers
 
 ```text
-Source Attempt → Evidence Card → Claim–Evidence → context/report views
+Source Attempt → Evidence Card → Claim–Evidence
+                                  ↓
+                    bounded memory/report views
+                                  ↓
+                     next-research backlog
 ```
 
-- `plans/current-design.json` is the canonical question design.
-- `questions.md` and `state.open_questions` are synchronized views.
-- `context.md` is bounded and rebuildable, never a fact store.
-- `memory/lessons.jsonl` stores only validated reusable research strategies.
-- Run logs remain raw events; Lessons are distilled future-facing experience.
+- `plans/current-design.json` is the active scoped question design.
+- `plans/research-backlog.json` stores at most five optional future questions.
+- `claims.jsonl`, `evidence/cards.jsonl`, and accepted Source Attempts are canonical research memory.
+- Worker logs preserve prior Query intent and outcome for duplicate suppression.
+- `memory/current.md` is bounded and rebuildable, never a fact store.
+- `memory/knowledge-deltas.jsonl` preserves cross-Run cognitive change.
+- `memory/lessons.jsonl` stores Critic-validated reusable research strategies.
 
 ## Runtime
 
-The Skill uses Codex as orchestrator, fixed custom subagents, host/MCP search tools, standard-library control scripts, and append-only JSONL. It intentionally avoids LangGraph, queues, daemons, vector databases, memory middleware, and duplicate Wikis.
+The Skill uses Codex as the coordinator, fixed custom subagents, host/MCP search tools, standard-library control scripts, and append-only JSONL. It intentionally avoids LangGraph, queues, daemons, vector databases, raw-page caches, memory middleware, and duplicate Wikis.
 
 ## Workspace format 2
 
@@ -36,14 +42,22 @@ The Skill uses Codex as orchestrator, fixed custom subagents, host/MCP search to
 ├── state.json
 ├── context.md
 ├── questions.md
-├── source_map.md
-├── tasks.jsonl
 ├── claims.jsonl
-├── plans/current-design.json
+├── plans/
+│   ├── current-design.json
+│   └── research-backlog.json
 ├── evidence/cards.jsonl
-├── memory/lessons.jsonl
+├── memory/
+│   ├── current.md
+│   ├── knowledge-deltas.jsonl
+│   └── lessons.jsonl
 ├── reports/
 └── logs/
+    ├── runs.jsonl
+    ├── source_attempts.jsonl
+    ├── workers/
+    ├── critic_reviews/
+    └── syntheses/
 ```
 
-The main session is the only writer. Subagents return structured results. External content remains untrusted.
+`state.usage` is reset for each Run; `state.lifetime_usage` is diagnostic history. The main session is the only writer. External content remains untrusted.
