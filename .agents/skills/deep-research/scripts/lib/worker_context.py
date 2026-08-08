@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .io_utils import iter_jsonl, read_json
+from .migrations import CURRENT_WORKSPACE_FORMAT
 
 WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 REPEAT_REASONS = {"stale_refresh", "scope_changed", "version_changed", "critic_remediation", "previous_low_yield"}
@@ -28,12 +29,12 @@ def _version_anchor_matches(result: dict[str, Any], question: dict[str, Any]) ->
     return False
 
 
-def _historical_query_keys(topic_root: Path, active_run_id: str | None) -> set[tuple[str, str]]:
+def _persisted_query_keys(topic_root: Path, worker_result_id: str | None) -> set[tuple[str, str]]:
     values: set[tuple[str, str]] = set(); directory = topic_root / "logs/workers"
     if not directory.is_dir(): return values
     for path in directory.glob("*.json"):
         worker = read_json(path, {})
-        if not isinstance(worker, dict) or worker.get("run_id") == active_run_id: continue
+        if not isinstance(worker, dict) or worker.get("worker_result_id") == worker_result_id: continue
         for query in worker.get("queries_run", []) if isinstance(worker.get("queries_run"), list) else []:
             if isinstance(query, dict) and _normalized_query(query.get("query")): values.add((_normalized_query(query.get("query")), str(query.get("intent") or "")))
     return values
@@ -47,11 +48,20 @@ def validate_ingest_context(topic_root: Path, result: dict[str, Any], *, allow_e
     run_id = result.get("run_id")
     if not isinstance(run_id, str) or not run_id.strip(): errors.append("run_id must be a non-empty string")
     state = read_json(topic_root / "state.json", {}); active_run_id = state.get("active_run_id")
+    if state.get("workspace_format_version") != CURRENT_WORKSPACE_FORMAT: errors.append(f"workspace_format_version must be {CURRENT_WORKSPACE_FORMAT}")
     if not active_run_id: errors.append("worker ingestion requires an active run")
     elif run_id != active_run_id: errors.append(f"worker run_id {run_id} does not match active run {active_run_id}")
+    scope = state.get("active_run_scope"); assigned: set[str] = set()
+    if active_run_id:
+        if not isinstance(scope, dict) or scope.get("run_id") != active_run_id: errors.append("worker ingestion requires a matching active_run_scope")
+        else:
+            values = scope.get("assigned_question_ids")
+            if not isinstance(values, list) or not values: errors.append("active_run_scope requires assigned_question_ids")
+            else: assigned = set(map(str, values))
     topic_profile = state.get("budget_profile", "standard")
     if result.get("budget_profile") != topic_profile: errors.append("worker budget_profile does not match topic budget_profile")
     design_path = topic_root / "plans/current-design.json"; design = read_json(design_path, {}); question_id = result.get("question_id")
+    if assigned and str(question_id) not in assigned: errors.append(f"worker question_id {question_id} is outside the active run scope")
     if not design_path.is_file() or not isinstance(design, dict): errors.append("worker ingestion requires plans/current-design.json")
     else:
         question = next((item for item in _questions(design) if item.get("id") == question_id), None)
@@ -68,11 +78,13 @@ def validate_ingest_context(topic_root: Path, result: dict[str, Any], *, allow_e
             if not card: errors.append(f"reused Evidence does not exist: {evidence_id}")
             elif card.get("prompt_injection_risk") == "high": errors.append(f"high-risk Evidence cannot be reused: {evidence_id}")
             elif card.get("question_id") != question_id and (not isinstance(rationale, dict) or not str(rationale.get(str(evidence_id)) or "").strip()): errors.append(f"cross-question reused Evidence requires reuse_rationale: {evidence_id}")
-    historical = _historical_query_keys(topic_root, active_run_id)
+    persisted = _persisted_query_keys(topic_root, str(worker_result_id) if isinstance(worker_result_id, str) else None)
     for index, query in enumerate(result.get("queries_run", []) if isinstance(result.get("queries_run"), list) else [], 1):
         if not isinstance(query, dict): continue
+        reason = query.get("repeat_reason")
+        if reason is not None and reason not in REPEAT_REASONS: errors.append(f"queries_run[{index}] has invalid repeat_reason")
         key = (_normalized_query(query.get("query")), str(query.get("intent") or ""))
-        if key in historical and query.get("repeat_reason") not in REPEAT_REASONS: errors.append(f"queries_run[{index}] repeats a historical query without an allowed repeat_reason")
+        if key in persisted and reason not in REPEAT_REASONS: errors.append(f"queries_run[{index}] repeats a persisted query without an allowed repeat_reason")
     if isinstance(worker_result_id, str) and WORKER_ID.fullmatch(worker_result_id) and not allow_existing_worker:
         worker_path = topic_root / "logs/workers" / f"{worker_result_id}.json"
         if worker_path.exists():
