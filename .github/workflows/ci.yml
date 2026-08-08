@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -29,7 +30,22 @@ jobs:
       - name: Install test runner
         run: python -m pip install --upgrade pip pytest
       - name: Unit tests
-        run: python scripts/run_tests_ci.py
+        shell: bash
+        run: set -o pipefail; python scripts/run_tests_ci.py 2>&1 | tee pytest-output.txt
+      - name: Report repair failure
+        if: ${{ failure() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' && github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          {
+            echo '### Temporary CI repair diagnostics'
+            echo
+            echo '```text'
+            tail -n 180 pytest-output.txt
+            echo '```'
+          } > ci-comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file ci-comment.md
 
   release-smoke:
     needs: test
