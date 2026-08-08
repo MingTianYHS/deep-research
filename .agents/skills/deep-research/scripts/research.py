@@ -17,24 +17,11 @@ from lib.lean_workflow import derive_workflow
 from lib.research_memory import load_backlog
 
 
-def cmd_new(args: argparse.Namespace) -> None:
-    topicctl.cmd_init(argparse.Namespace(title=args.title, directory_name=args.directory_name, budget=args.budget, force=False, allow_language_mismatch=args.allow_language_mismatch))
-
-
-def cmd_plan(args: argparse.Namespace) -> None:
-    researchctl.cmd_plan(argparse.Namespace(slug=args.topic, questions=args.questions, force=False))
-
-
-def cmd_brief(args: argparse.Namespace) -> None:
-    researchctl.cmd_brief(argparse.Namespace(slug=args.topic, question=args.question, output=args.output))
-
-
-def cmd_start(args: argparse.Namespace) -> None:
-    researchctl.cmd_run_start(argparse.Namespace(slug=args.topic, mode=args.mode))
-
-
-def cmd_status(args: argparse.Namespace) -> None:
-    researchctl.cmd_status(argparse.Namespace(slug=args.topic))
+def cmd_new(args: argparse.Namespace) -> None: topicctl.cmd_init(argparse.Namespace(title=args.title, directory_name=args.directory_name, budget=args.budget, force=False, allow_language_mismatch=args.allow_language_mismatch))
+def cmd_plan(args: argparse.Namespace) -> None: researchctl.cmd_plan(argparse.Namespace(slug=args.topic, questions=args.questions, force=False))
+def cmd_brief(args: argparse.Namespace) -> None: researchctl.cmd_brief(argparse.Namespace(slug=args.topic, question=args.question, output=args.output))
+def cmd_start(args: argparse.Namespace) -> None: researchctl.cmd_run_start(argparse.Namespace(slug=args.topic, mode=args.mode))
+def cmd_status(args: argparse.Namespace) -> None: researchctl.cmd_status(argparse.Namespace(slug=args.topic))
 
 
 def _budget_exhausted(result: dict, budget: dict) -> dict:
@@ -54,16 +41,13 @@ def cmd_next(args: argparse.Namespace) -> None:
     root = researchctl.topic_dir(args.topic); state = read_json(root / "state.json", {}); state_run_id = state.get("active_run_id"); lease = None
     if state_run_id:
         lease = acquire_or_refresh(root, str(state_run_id), resolve_coordinator_id(getattr(args, "coordinator_id", None)))
-        if not lease["allowed"]:
-            print(json.dumps(_lease_blocked(str(state_run_id), lease), ensure_ascii=False, indent=2)); return
+        if not lease["allowed"]: print(json.dumps(_lease_blocked(str(state_run_id), lease), ensure_ascii=False, indent=2)); return
     result = derive_workflow(root, researchctl.SKILL_DIR)
-    if not state_run_id and state.get("last_run_at") and result.get("phase") == "ready_to_start": result = _wait_for_user(root, result)
+    if not state_run_id and state.get("last_run_at") and result.get("phase") in {"ready_to_start", "reflection", "reflection_blocked"}: result = _wait_for_user(root, result)
     run_id = result.get("active_run_id")
     if lease is not None: result["coordinator_lease"] = lease
     if run_id:
-        profile = str(state.get("budget_profile") or "standard")
-        budget = consume_next_call(root, str(run_id), profile, str(result.get("phase") or "unknown"), str(result.get("next_action") or "unknown"), researchctl.SKILL_DIR / "config/orchestration.toml")
-        result["coordinator_budget"] = budget
+        profile = str(state.get("budget_profile") or "standard"); budget = consume_next_call(root, str(run_id), profile, str(result.get("phase") or "unknown"), str(result.get("next_action") or "unknown"), researchctl.SKILL_DIR / "config/orchestration.toml"); result["coordinator_budget"] = budget
         if not budget["allowed"]: result = _budget_exhausted(result, budget)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -75,12 +59,8 @@ def cmd_claim_sync(args: argparse.Namespace) -> None:
     print(json.dumps(sync_run_claims(root, str(run_id)), ensure_ascii=False, indent=2))
 
 
-def cmd_report(args: argparse.Namespace) -> None:
-    topicctl.cmd_report(argparse.Namespace(topic=args.topic, type=args.type, title=args.title, output=args.output, allow_language_mismatch=args.allow_language_mismatch))
-
-
-def cmd_finish(args: argparse.Namespace) -> None:
-    researchctl.cmd_run_finish(argparse.Namespace(slug=args.topic, status=args.status, note=args.note))
+def cmd_report(args: argparse.Namespace) -> None: topicctl.cmd_report(argparse.Namespace(topic=args.topic, type=args.type, title=args.title, output=args.output, allow_language_mismatch=args.allow_language_mismatch))
+def cmd_finish(args: argparse.Namespace) -> None: researchctl.cmd_run_finish(argparse.Namespace(slug=args.topic, status=args.status, note=args.note))
 
 
 def cmd_validate(args: argparse.Namespace) -> None:
@@ -97,8 +77,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     if exit_code or not structural.get("valid", False): raise SystemExit(exit_code or 1)
 
 
-def _topic_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("topic", nargs="?", help="Topic directory/name. Omit inside a topic workspace.")
+def _topic_argument(parser: argparse.ArgumentParser) -> None: parser.add_argument("topic", nargs="?", help="Topic directory/name. Omit inside a topic workspace.")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -116,5 +95,4 @@ def parser() -> argparse.ArgumentParser:
     return value
 
 
-if __name__ == "__main__":
-    arguments = parser().parse_args(); arguments.func(arguments)
+if __name__ == "__main__": arguments = parser().parse_args(); arguments.func(arguments)
