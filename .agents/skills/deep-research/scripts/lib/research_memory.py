@@ -35,10 +35,23 @@ def _iso(value: Any) -> datetime | None:
     except ValueError: return None
 
 
-def _freshness(card: dict[str, Any], now: datetime) -> str:
-    source = card.get("source") or {}; checked = _iso(source.get("accessed_at") or card.get("ingested_at"))
+def latest_verifications(root: Path) -> dict[str, dict[str, Any]]:
+    values: dict[str, dict[str, Any]] = {}
+    for _, item in iter_jsonl(root / "evidence/verifications.jsonl"):
+        evidence_id = item.get("evidence_id")
+        if evidence_id: values[str(evidence_id)] = item
+    return values
+
+
+def _freshness(card: dict[str, Any], now: datetime, verification: dict[str, Any] | None = None) -> str:
+    source = card.get("source") or {}; latest = verification or {}; checked = _iso(latest.get("verified_at") or source.get("last_verified_at") or source.get("accessed_at") or card.get("ingested_at"))
     if checked is None: return "unknown"
     limit = FRESH_DAYS.get(str(source.get("source_type") or "unknown"), FRESH_DAYS["unknown"]); return "fresh" if (now - checked).days <= limit else "stale"
+
+
+def evidence_freshness(root: Path, card: dict[str, Any], now: datetime | None = None, verifications: dict[str, dict[str, Any]] | None = None) -> str:
+    latest = (verifications or latest_verifications(root)).get(str(card.get("id")))
+    return _freshness(card, now or datetime.now(timezone.utc), latest)
 
 
 def load_backlog(root: Path) -> dict[str, Any]:
@@ -88,13 +101,27 @@ def _workers(root: Path) -> list[dict[str, Any]]:
     return [value for path in sorted(directory.glob("*.json")) if isinstance((value := read_json(path, {})), dict)]
 
 
-def _select_cards(all_cards: list[dict[str, Any]], question_id: str | None, question_text: str | None) -> list[dict[str, Any]]:
-    if not question_id and not question_text: return all_cards[-MAX_EVIDENCE:]
+def _claim_priority(claim: dict[str, Any]) -> tuple[int, int, str]:
+    return (1 if claim.get("is_core") else 0, 1 if claim.get("status") in {"contested", "unresolved"} else 0, str(claim.get("updated_at") or claim.get("created_at") or ""))
+
+
+def _select_cards(all_cards: list[dict[str, Any]], question_id: str | None, question_text: str | None, claims: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    if not question_id and not question_text:
+        by_id = {str(item.get("id")): item for item in all_cards if item.get("id")}; selected: list[dict[str, Any]] = []; seen: set[str] = set()
+        for claim in sorted(claims.values(), key=_claim_priority, reverse=True):
+            for relation in claim.get("relations", []):
+                evidence_id = str(relation.get("evidence_id") or "") if isinstance(relation, dict) else ""
+                if evidence_id in by_id and evidence_id not in seen: selected.append(by_id[evidence_id]); seen.add(evidence_id)
+                if len(selected) >= MAX_EVIDENCE: return selected
+        for card in reversed(all_cards):
+            evidence_id = str(card.get("id") or "")
+            if evidence_id and evidence_id not in seen: selected.append(card); seen.add(evidence_id)
+            if len(selected) >= MAX_EVIDENCE: break
+        return selected
     target = _tokens(question_text); ranked: list[tuple[int, int, dict[str, Any]]] = []
     for index, card in enumerate(all_cards):
         same = card.get("question_id") == question_id; score = (4 if same else 0) + len(target & _tokens(card.get("statement")))
         if same or score > 0: ranked.append((score, index, card))
-    if not ranked: return []
     ranked.sort(key=lambda item: (item[0], item[1]), reverse=True); return [item[2] for item in ranked[:MAX_EVIDENCE]]
 
 
@@ -114,26 +141,26 @@ def _select_queries(root: Path, question_id: str | None, question_text: str | No
 
 
 def build_reuse_plan(root: Path, question_id: str | None = None, question_text: str | None = None) -> dict[str, Any]:
-    state = read_json(root / "state.json", {}); now = datetime.now(timezone.utc)
-    attempts = {str(item.get("id")): item for _, item in iter_jsonl(root / "logs/source_attempts.jsonl") if item.get("id")}
-    all_cards = [item for _, item in iter_jsonl(root / "evidence/cards.jsonl") if item.get("id")]; cards = _select_cards(all_cards, question_id, question_text); evidence_ids = {str(item["id"]) for item in cards}
+    state = read_json(root / "state.json", {}); now = datetime.now(timezone.utc); claims = materialize(root / "claims.jsonl"); verifications = latest_verifications(root)
+    attempts = {str(item.get("id")): item for _, item in iter_jsonl(root / "logs/source_attempts.jsonl") if item.get("id")}; all_cards = [item for _, item in iter_jsonl(root / "evidence/cards.jsonl") if item.get("id")]; cards = _select_cards(all_cards, question_id, question_text, claims); evidence_ids = {str(item["id"]) for item in cards}
     relevant_claims = []
-    for claim in materialize(root / "claims.jsonl").values():
+    for claim in claims.values():
         linked = [str(item.get("evidence_id")) for item in claim.get("relations", []) if isinstance(item, dict)]
-        if evidence_ids.intersection(linked): relevant_claims.append({"id": claim.get("id"), "text": _clip(claim.get("text"), 300), "status": claim.get("status"), "confidence": claim.get("confidence"), "evidence_ids": sorted(evidence_ids.intersection(linked))})
-    relevant_claims = relevant_claims[-MAX_CLAIMS:]
+        if evidence_ids.intersection(linked): relevant_claims.append({"id": claim.get("id"), "text": _clip(claim.get("text"), 300), "status": claim.get("status"), "confidence": claim.get("confidence"), "is_core": bool(claim.get("is_core")), "updated_at": claim.get("updated_at"), "evidence_ids": sorted(evidence_ids.intersection(linked))})
+    relevant_claims = sorted(relevant_claims, key=_claim_priority, reverse=True)[:MAX_CLAIMS]
     sources: dict[str, dict[str, Any]] = {}; evidence_summary = []; freshness_values: list[str] = []
     for card in cards:
         source = card.get("source") or {}; url = str(source.get("canonical_url") or source.get("url") or "")
         if not url: continue
-        freshness = _freshness(card, now); freshness_values.append(freshness); attempt = attempts.get(str(card.get("source_attempt_id")), {})
-        existing = sources.setdefault(url, {"url": url, "title": _clip(source.get("title"), 180), "publisher": _clip(source.get("publisher"), 120), "source_type": source.get("source_type"), "last_checked_at": source.get("accessed_at") or card.get("ingested_at"), "content_sha256": attempt.get("content_sha256"), "freshness": freshness, "evidence_ids": [], "covered_questions": []})
+        verification = verifications.get(str(card.get("id")), {}); freshness = _freshness(card, now, verification); freshness_values.append(freshness); attempt_id = verification.get("source_attempt_id") or card.get("source_attempt_id"); attempt = attempts.get(str(attempt_id), {})
+        checked = verification.get("verified_at") or source.get("last_verified_at") or source.get("accessed_at") or card.get("ingested_at")
+        existing = sources.setdefault(url, {"url": url, "title": _clip(source.get("title"), 180), "publisher": _clip(source.get("publisher"), 120), "source_type": source.get("source_type"), "last_checked_at": checked, "latest_source_attempt_id": attempt_id, "content_sha256": verification.get("content_sha256") or attempt.get("content_sha256"), "freshness": freshness, "evidence_ids": [], "covered_questions": []})
         existing["evidence_ids"].append(str(card["id"])); origin_question = str(card.get("question_id") or "")
         if origin_question and origin_question not in existing["covered_questions"]: existing["covered_questions"].append(origin_question)
         if existing["freshness"] != "stale" and freshness == "stale": existing["freshness"] = "stale"
-        evidence_summary.append({"id": card.get("id"), "original_question_id": card.get("question_id"), "cross_question": bool(question_id and card.get("question_id") != question_id), "statement": _clip(card.get("statement"), 320), "stance": card.get("stance"), "confidence": card.get("confidence"), "url": url, "freshness": freshness})
+        evidence_summary.append({"id": card.get("id"), "original_question_id": card.get("question_id"), "cross_question": bool(question_id and card.get("question_id") != question_id), "statement": _clip(card.get("statement"), 320), "stance": card.get("stance"), "confidence": card.get("confidence"), "url": url, "freshness": freshness, "last_verified_at": checked})
     action = "targeted_discovery" if not cards else "refresh_known_sources_before_search" if {"stale", "unknown"}.intersection(freshness_values) else "reuse_existing_evidence_before_search"
-    return {"research_mode": "incremental" if state.get("baseline_completed") else "baseline", "since": state.get("last_run_at"), "question_id": question_id, "recommended_action": action, "existing_evidence": evidence_summary, "relevant_claims": relevant_claims, "known_sources": list(sources.values())[-MAX_SOURCES:], "prior_queries": _select_queries(root, question_id, question_text), "next_research": load_backlog(root)["items"], "reuse_rules": ["Reuse fresh Evidence before using a search tool.", "Cross-question reuse requires an explicit relevance rationale.", "For stale or unknown sources, refresh the known URL directly before broad discovery.", "Do not repeat a prior query unless freshness, scope, version, remediation, or a previous low-yield result justifies it.", "If existing Evidence satisfies the assignment, return reused_evidence_ids and perform no search."]}
+    return {"research_mode": "incremental" if state.get("baseline_completed") else "baseline", "since": state.get("last_run_at"), "question_id": question_id, "recommended_action": action, "existing_evidence": evidence_summary, "relevant_claims": relevant_claims, "known_sources": list(sources.values())[-MAX_SOURCES:], "prior_queries": _select_queries(root, question_id, question_text), "next_research": load_backlog(root)["items"], "reuse_rules": ["Reuse fresh Evidence before using a search tool.", "Cross-question reuse requires an explicit relevance rationale.", "For stale or unknown sources, refresh the known URL directly before broad discovery.", "A stale or unknown essential Evidence item cannot complete a reuse-only Worker.", "Do not repeat a prior query unless freshness, scope, version, remediation, or a previous low-yield result justifies it."]}
 
 
 def render_current_memory(root: Path) -> dict[str, Any]:

@@ -12,7 +12,14 @@ module = importlib.util.module_from_spec(SPEC); assert SPEC.loader; SPEC.loader.
 
 def test_public_commands_are_small_and_workflow_focused():
     root = module.parser(); subparsers = next(action for action in root._actions if action.dest == "command")
-    assert set(subparsers.choices) == {"new", "plan", "brief", "start", "status", "next", "claim-sync", "report", "finish", "validate"}
+    assert set(subparsers.choices) == {"new", "plan", "brief", "start", "continue", "status", "next", "claim-sync", "report", "finish", "validate"}
+
+
+def test_continue_requires_one_bounded_user_selection():
+    parser = module.parser()
+    selected = parser.parse_args(["continue", "topic", "--backlog-id", "rq-1"]); assert selected.backlog_id == "rq-1"
+    custom = parser.parse_args(["continue", "topic", "--question", "海外市场如何变化？"]); assert custom.question
+    with pytest.raises(SystemExit): parser.parse_args(["continue", "topic"])
 
 
 def test_new_always_uses_guarded_topic_controller(monkeypatch):

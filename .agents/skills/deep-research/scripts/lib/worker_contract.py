@@ -18,73 +18,48 @@ BUDGETS_FILE = Path(__file__).resolve().parents[2] / "config" / "budgets.toml"
 
 
 def profile_limits(profile: str, budgets_file: Path | None = None) -> dict[str, Any]:
-    with (budgets_file or BUDGETS_FILE).open("rb") as handle:
-        profiles = tomllib.load(handle)
-    if profile not in profiles:
-        raise ValueError(f"unknown worker budget profile: {profile}")
+    with (budgets_file or BUDGETS_FILE).open("rb") as handle: profiles = tomllib.load(handle)
+    if profile not in profiles: raise ValueError(f"unknown worker budget profile: {profile}")
     value = profiles[profile]
-    return {
-        "max_tool_calls": int(value["max_tool_calls_per_worker"]),
-        "max_search_queries": int(value["max_search_queries_per_worker"]),
-        "max_source_pages": int(value["max_source_pages_per_worker"]),
-        "max_same_url_attempts": int(value["max_same_url_attempts"]),
-        "max_duration_minutes": int(value["max_duration_minutes_per_worker"]),
-        "reserve_output_ratio": float(value["reserve_ratio"]),
-    }
+    return {"max_tool_calls": int(value["max_tool_calls_per_worker"]), "max_search_queries": int(value["max_search_queries_per_worker"]), "max_source_pages": int(value["max_source_pages_per_worker"]), "max_same_url_attempts": int(value["max_same_url_attempts"]), "max_duration_minutes": int(value["max_duration_minutes_per_worker"]), "reserve_output_ratio": float(value["reserve_ratio"])}
 
 
-def _normalized_query(value: str) -> str:
-    return re.sub(r"\s+", " ", value.strip()).casefold()
+def _normalized_query(value: str) -> str: return re.sub(r"\s+", " ", value.strip()).casefold()
 
 
 def _validate_queries(result: dict[str, Any], errors: list[str]) -> dict[str, dict[str, Any]]:
-    queries: dict[str, dict[str, Any]] = {}
-    values = result.get("queries_run", []) if isinstance(result.get("queries_run"), list) else []
-    normalized: dict[str, list[dict[str, Any]]] = {}
+    queries: dict[str, dict[str, Any]] = {}; values = result.get("queries_run", []) if isinstance(result.get("queries_run"), list) else []; normalized: dict[str, list[dict[str, Any]]] = {}
     for index, query in enumerate(values, 1):
-        if not isinstance(query, dict):
-            errors.append(f"queries_run[{index}] must be an object")
-            continue
+        if not isinstance(query, dict): errors.append(f"queries_run[{index}] must be an object"); continue
         query_id = query.get("id")
-        if not query_id or query_id in queries:
-            errors.append(f"queries_run[{index}] requires a unique id")
-            continue
+        if not query_id or query_id in queries: errors.append(f"queries_run[{index}] requires a unique id"); continue
         for field in ("query", "intent", "provider", "language", "outcome"):
             if not query.get(field): errors.append(f"queries_run[{index}] missing {field}")
         if "fallback_of" not in query: errors.append(f"queries_run[{index}] missing fallback_of")
         if query.get("intent") not in QUERY_INTENTS: errors.append(f"queries_run[{index}] invalid intent")
         if query.get("outcome") not in QUERY_OUTCOMES: errors.append(f"queries_run[{index}] invalid outcome")
-        if query.get("intent") == "version_check" and not query.get("time_anchor"):
-            errors.append(f"queries_run[{index}] version_check requires time_anchor")
-        queries[str(query_id)] = query
-        text = query.get("query")
+        if query.get("intent") == "version_check" and not query.get("time_anchor"): errors.append(f"queries_run[{index}] version_check requires time_anchor")
+        queries[str(query_id)] = query; text = query.get("query")
         if isinstance(text, str) and text.strip(): normalized.setdefault(_normalized_query(text), []).append(query)
     for text, matches in normalized.items():
-        if len({str(item.get("provider")) for item in matches}) > 1:
-            errors.append(f"same query must not be broadcast to multiple providers: {text}")
+        if len({str(item.get("provider")) for item in matches}) > 1: errors.append(f"same query must not be broadcast to multiple providers: {text}")
     for query_id, query in queries.items():
         parent_id = query.get("fallback_of")
         if parent_id is None: continue
         parent = queries.get(str(parent_id))
-        if not parent:
-            errors.append(f"query {query_id} references unknown fallback_of {parent_id}")
-            continue
+        if not parent: errors.append(f"query {query_id} references unknown fallback_of {parent_id}"); continue
         if str(parent_id) == query_id: errors.append(f"query {query_id} cannot fall back to itself")
         if parent.get("fallback_of") is not None: errors.append(f"query {query_id} exceeds maximum fallback depth 1")
-        if _normalized_query(str(parent.get("query", ""))) == _normalized_query(str(query.get("query", ""))) and parent.get("intent") == query.get("intent"):
-            errors.append(f"query {query_id} fallback must change strategy, not only provider")
+        if _normalized_query(str(parent.get("query", ""))) == _normalized_query(str(query.get("query", ""))) and parent.get("intent") == query.get("intent"): errors.append(f"query {query_id} fallback must change strategy, not only provider")
     return queries
 
 
 def _validate_attempts(result: dict[str, Any], queries: dict[str, dict[str, Any]], errors: list[str]) -> dict[str, dict[str, Any]]:
-    attempts: dict[str, dict[str, Any]] = {}
-    values = result.get("source_attempts", []) if isinstance(result.get("source_attempts"), list) else []
+    attempts: dict[str, dict[str, Any]] = {}; values = result.get("source_attempts", []) if isinstance(result.get("source_attempts"), list) else []
     for index, attempt in enumerate(values, 1):
-        if not isinstance(attempt, dict):
-            errors.append(f"source_attempts[{index}] must be an object"); continue
+        if not isinstance(attempt, dict): errors.append(f"source_attempts[{index}] must be an object"); continue
         attempt_id = attempt.get("id")
-        if not attempt_id or attempt_id in attempts:
-            errors.append(f"source_attempts[{index}] requires a unique id"); continue
+        if not attempt_id or attempt_id in attempts: errors.append(f"source_attempts[{index}] requires a unique id"); continue
         for field in ("url", "normalized_url", "status", "tool", "access_mode"):
             if not attempt.get(field): errors.append(f"source_attempts[{index}] missing {field}")
         if attempt.get("status") not in {"accepted", "unavailable", "rejected"}: errors.append(f"source_attempts[{index}] invalid status")
@@ -142,11 +117,8 @@ def validate_worker_result(result: dict[str, Any], limits: dict[str, Any]) -> di
     for key in REQUIRED_LISTS:
         if not isinstance(result.get(key), list): errors.append(f"{key} must be a list")
     reused = result.get("reused_evidence_ids", [])
-    if not isinstance(reused, list) or any(not isinstance(item, str) or not item for item in reused):
-        errors.append("reused_evidence_ids must be a list of non-empty strings")
-        reused = []
-    elif len(reused) != len(set(reused)):
-        errors.append("reused_evidence_ids must not contain duplicates")
+    if not isinstance(reused, list) or any(not isinstance(item, str) or not item for item in reused): errors.append("reused_evidence_ids must be a list of non-empty strings"); reused = []
+    elif len(reused) != len(set(reused)): errors.append("reused_evidence_ids must not contain duplicates")
     queries = _validate_queries(result, errors); attempts = _validate_attempts(result, queries, errors); _validate_cards(result, attempts, errors)
     usage = result.get("budget_used")
     if not isinstance(usage, dict): errors.append("budget_used must be an object")
@@ -157,13 +129,14 @@ def validate_worker_result(result: dict[str, Any], limits: dict[str, Any]) -> di
             elif value > limits[limit_key]: errors.append(f"budget_used.{usage_key} {value} exceeds {limit_key} {limits[limit_key]}")
     if result.get("status") == "complete" and result.get("coverage_status") != "sufficient": errors.append("complete worker result requires sufficient coverage")
     reuse_only = bool(reused) and not queries and not attempts and not result.get("evidence_cards")
+    known_url_refresh = not queries and bool(attempts) and all(item.get("discovery_method") in {"known_url", "user_provided"} for item in attempts.values())
     if result.get("status") == "complete":
         if reuse_only:
             if result.get("budget_profile") == "deep": errors.append("deep worker result cannot complete through reuse only")
             if result.get("stop_reason") != "existing_evidence_sufficient": errors.append("reuse-only completion requires stop_reason existing_evidence_sufficient")
             if isinstance(usage, dict) and any(usage.get(key, 0) != 0 for key in USAGE_LIMITS): errors.append("reuse-only completion requires zero tool, query, and page usage")
         else:
-            if not queries: errors.append("complete version-2 worker result requires query trace or reused Evidence")
+            if not queries and not known_url_refresh: errors.append("complete version-2 worker result requires query trace, known-URL refresh, or reused Evidence")
             if result.get("budget_profile") == "deep" and not any(query.get("intent") == "disconfirming" for query in queries.values()): errors.append("complete deep worker result requires a disconfirming query")
             if not any(attempt.get("status") == "accepted" and attempt.get("eligible_for_evidence") for attempt in attempts.values()): errors.append("complete version-2 worker result requires an accepted Source Attempt")
             if not result.get("evidence_cards"): errors.append("complete version-2 worker result requires at least one Evidence Card")
@@ -174,4 +147,4 @@ def validate_worker_result(result: dict[str, Any], limits: dict[str, Any]) -> di
         if not result.get("gaps"): errors.append("second low-yield result requires an explicit gap")
     if result.get("status") == "failed" and not result.get("gaps"): warnings.append("failed worker result should explain at least one gap")
     if result.get("stop_reason") == "acceptance_criteria_met" and result.get("coverage_status") != "sufficient": errors.append("acceptance_criteria_met requires sufficient coverage")
-    return {"valid": not errors, "errors": sorted(set(errors)), "warnings": sorted(set(warnings)), "limits": limits, "budget_verification": "self_reported", "worker_result_version": 2, "reuse_only": reuse_only}
+    return {"valid": not errors, "errors": sorted(set(errors)), "warnings": sorted(set(warnings)), "limits": limits, "budget_verification": "self_reported", "worker_result_version": 2, "reuse_only": reuse_only, "known_url_refresh": known_url_refresh}

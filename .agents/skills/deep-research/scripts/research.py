@@ -21,11 +21,12 @@ def cmd_new(args: argparse.Namespace) -> None: topicctl.cmd_init(argparse.Namesp
 def cmd_plan(args: argparse.Namespace) -> None: researchctl.cmd_plan(argparse.Namespace(slug=args.topic, questions=args.questions, force=False))
 def cmd_brief(args: argparse.Namespace) -> None: researchctl.cmd_brief(argparse.Namespace(slug=args.topic, question=args.question, output=args.output))
 def cmd_start(args: argparse.Namespace) -> None: researchctl.cmd_run_start(argparse.Namespace(slug=args.topic, mode=args.mode))
+def cmd_continue(args: argparse.Namespace) -> None: researchctl.cmd_continue(argparse.Namespace(slug=args.topic, backlog_id=args.backlog_id, question=args.question))
 def cmd_status(args: argparse.Namespace) -> None: researchctl.cmd_status(argparse.Namespace(slug=args.topic))
 
 
 def _budget_exhausted(result: dict, budget: dict) -> dict:
-    return {**result, "phase": "coordinator_budget_exhausted", "next_action": "request_budget_decision", "command": None, "agent": None, "assignments": [], "requires_user_input": True, "blockers": budget["violations"], "coordinator_budget": budget, "coordinator_instruction": "Stop automatic orchestration. Ask the user whether to finish partial, inspect the repeated phase, or explicitly continue with a larger profile."}
+    return {**result, "phase": "coordinator_budget_exhausted", "next_action": "request_budget_decision", "command": None, "agent": None, "assignments": [], "requires_user_input": True, "blockers": budget["violations"], "coordinator_budget": budget, "coordinator_instruction": "Stop automatic orchestration. Ask the user whether to finish partial, inspect the repeated phase, or explicitly continue with a larger topic profile."}
 
 
 def _lease_blocked(run_id: str, lease: dict) -> dict:
@@ -34,7 +35,7 @@ def _lease_blocked(run_id: str, lease: dict) -> dict:
 
 def _wait_for_user(root, result: dict) -> dict:
     backlog = load_backlog(root)["items"]
-    return {**result, "phase": "awaiting_user_research_request", "next_action": "present_memory_and_backlog_then_wait", "command": None, "agent": None, "requires_user_input": True, "blockers": [], "assignments": [], "progress": {**dict(result.get("progress") or {}), "next_research": backlog}, "coordinator_instruction": "Present the current findings and bounded follow-up backlog, then stop. Start another run only after the user explicitly asks to continue, refresh, or investigate a selected gap."}
+    return {**result, "phase": "awaiting_user_research_request", "next_action": "present_memory_and_backlog_then_wait", "command": None, "agent": None, "requires_user_input": True, "blockers": [], "assignments": [], "progress": {**dict(result.get("progress") or {}), "next_research": backlog}, "coordinator_instruction": "Present the current findings and bounded follow-up backlog, then stop. Use research.py continue only after the user explicitly selects a backlog item or asks a new research question."}
 
 
 def cmd_next(args: argparse.Namespace) -> None:
@@ -83,9 +84,10 @@ def _topic_argument(parser: argparse.ArgumentParser) -> None: parser.add_argumen
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(prog="research", description="User-directed persistent research assistant for one topic."); sub = value.add_subparsers(dest="command", required=True)
     new = sub.add_parser("new", help="Create one persistent topic workspace."); new.add_argument("title"); new.add_argument("--directory-name"); new.add_argument("--budget", choices=["lite", "standard", "deep"], default="standard"); new.add_argument("--allow-language-mismatch", action="store_true"); new.set_defaults(func=cmd_new)
-    plan = sub.add_parser("plan", help="Create or synchronize the canonical Research Design."); _topic_argument(plan); plan.add_argument("--questions", type=int, default=5, choices=range(1, 9)); plan.set_defaults(func=cmd_plan)
+    plan = sub.add_parser("plan", help="Create or synchronize the baseline Research Design."); _topic_argument(plan); plan.add_argument("--questions", type=int, default=5, choices=range(1, 9)); plan.set_defaults(func=cmd_plan)
     brief = sub.add_parser("brief", help="Recall bounded knowledge, sources, prior queries, and gaps before searching."); _topic_argument(brief); brief.add_argument("--question"); brief.add_argument("--output"); brief.set_defaults(func=cmd_brief)
-    start = sub.add_parser("start", help="Start a user-approved baseline, incremental, or deep-dive Run."); _topic_argument(start); start.add_argument("--mode", choices=["baseline", "initial", "incremental", "deep-dive"], default="initial"); start.set_defaults(func=cmd_start)
+    start = sub.add_parser("start", help="Start the prepared baseline or incremental Run."); _topic_argument(start); start.add_argument("--mode", choices=["baseline", "initial", "incremental"], default="initial"); start.set_defaults(func=cmd_start)
+    continuation = sub.add_parser("continue", help="Turn one user-selected gap into a bounded incremental Run."); _topic_argument(continuation); group = continuation.add_mutually_exclusive_group(required=True); group.add_argument("--backlog-id"); group.add_argument("--question"); continuation.set_defaults(func=cmd_continue)
     status = sub.add_parser("status", help="Show topic state, record counts, and follow-up backlog."); _topic_argument(status); status.set_defaults(func=cmd_status)
     next_step = sub.add_parser("next", help="Return the next legal action; never starts another Run after delivery without the user."); _topic_argument(next_step); next_step.add_argument("--coordinator-id", help="Stable identity for enforcing one coordinator per topic run"); next_step.set_defaults(func=cmd_next)
     claim_sync = sub.add_parser("claim-sync", help="Materialize compact Claims for a lite/standard run."); _topic_argument(claim_sync); claim_sync.set_defaults(func=cmd_claim_sync)

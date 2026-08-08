@@ -2,42 +2,41 @@ from pathlib import Path
 import json
 import sys
 
+import pytest
+
 SCRIPT_DIR = Path(__file__).parents[1] / ".agents/skills/deep-research/scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
-from lib.migrations import apply, inspect, plan
+from lib.migrations import CURRENT_WORKSPACE_FORMAT, apply, inspect, plan
 
 
-def workspace(tmp_path, version="missing"):
+def workspace(tmp_path, version):
     root = tmp_path / "topic"
     (root / "evidence").mkdir(parents=True)
-    (root / "logs").mkdir()
     (root / "topic.toml").write_text('title="x"\n', encoding="utf-8")
-    state = {"topic": "x", "budget_profile": "lite", "open_questions": []}
-    if version != "missing":
-        state["workspace_format_version"] = version
-    (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    (root / "state.json").write_text(json.dumps({"topic": "x", "workspace_format_version": version}), encoding="utf-8")
     (root / "evidence/cards.jsonl").write_text("", encoding="utf-8")
     (root / "claims.jsonl").write_text("", encoding="utf-8")
-    (root / "AGENT.md").write_text("legacy instructions", encoding="utf-8")
     return root
 
 
-def test_v1_workspace_migrates_to_canonical_topic_expert_v2(tmp_path):
-    root = workspace(tmp_path)
-    assert inspect(root)["version"] == 1
-    assert plan(root)["needs_migration"]
-    result = apply(root)
-    assert result["applied"]
-    state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-    assert state["workspace_format_version"] == 2
-    assert state["context_generated_at"]
-    assert "Topic expert coordinator" in (root / "AGENTS.md").read_text(encoding="utf-8")
-    assert (root / "AGENT.md").read_text(encoding="utf-8") == "legacy instructions"
-    assert (root / "memory/lessons.jsonl").exists()
-    assert not inspect(root)["needs_migration"]
+def test_current_workspace_requires_no_migration(tmp_path):
+    root = workspace(tmp_path, CURRENT_WORKSPACE_FORMAT)
+    assert inspect(root)["valid"]
+    assert not plan(root)["needs_migration"]
+    assert not apply(root)["applied"]
+
+
+def test_older_workspace_is_rejected_instead_of_migrated(tmp_path):
+    root = workspace(tmp_path, 2)
+    result = inspect(root)
+    assert not result["valid"]
+    assert not result["needs_migration"]
+    assert "create a new format-3 workspace" in result["errors"][0]
+    with pytest.raises(ValueError, match="unsupported"):
+        apply(root)
 
 
 def test_newer_workspace_is_rejected(tmp_path):
     result = inspect(workspace(tmp_path, 99))
     assert not result["valid"]
-    assert "newer than runtime" in result["errors"][0]
+    assert "unsupported" in result["errors"][0]
