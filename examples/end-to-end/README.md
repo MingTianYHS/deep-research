@@ -1,20 +1,5 @@
-# End-to-end persisted topic fixture
+# Legacy format-2 fixture
 
-This is a synthetic fixture for testing the control-plane flow. The `example.com` URLs intentionally are not real research evidence and must never be presented as factual research.
+This directory is preserved only as historical sample data from the pre-1.0 workspace model. The format-3 runtime intentionally rejects it and does not migrate it.
 
-Copy it into a disposable workspace:
-
-```bash
-cp -R examples/end-to-end workspace/topics/example-ai-research
-CTL=.agents/skills/deep-research/scripts/researchctl.py
-QCTL=.agents/skills/deep-research/scripts/qualityctl.py
-
-python "$CTL" status example-ai-research
-python "$CTL" validate example-ai-research
-python "$CTL" claims example-ai-research
-python "$QCTL" quality-report example-ai-research --as-of 2026-08-01
-python "$CTL" verify-citations example-ai-research --report workspace/topics/example-ai-research/reports/initial.md
-python "$QCTL" audit-init example-ai-research --report workspace/topics/example-ai-research/reports/initial.md
-```
-
-The structural citation check succeeds. A final quote-fidelity audit should remain unresolved because synthetic sources are not valid evidence. This demonstrates that structural validity does not equal factual verification.
+Current smoke tests create a fresh temporary workspace through `research.py new`, exercise the supported lifecycle, export it, and delete it. Do not copy this fixture as a new topic. Use the public `research.py new` command instead.

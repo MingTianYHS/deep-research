@@ -1,23 +1,17 @@
-# Workspace format migrations
+# Workspace format policy
 
-The current workspace format is version 2. For backward compatibility, an unversioned workspace is interpreted as legacy version 1 and must be migrated before format-2-only behavior is required.
+The current development workspace format is **3**.
+
+Format 3 is a deliberate product boundary for the user-driven persistent research assistant. It adds immutable active-run scope, incremental continuation, bounded knowledge deltas and backlog, Evidence verification events, and run/lifetime usage separation.
+
+## No legacy migration
+
+Format 1, format 2, and unversioned workspaces are unsupported by this runtime. They are not rewritten or deleted. Create a fresh workspace instead:
 
 ```bash
-python scripts/releasectl.py workspace-check topic
-python scripts/releasectl.py workspace-migrate topic
-python scripts/releasectl.py workspace-migrate topic --apply
-python scripts/releasectl.py workspace-check topic --require-explicit
+python ~/.agents/skills/deep-research/scripts/research.py new "主题名称" --budget standard
 ```
 
-Rules:
+Validation and release tooling report the old version and instruct the user to recreate the workspace. `workspace-migrate --apply` is intentionally a no-op for a valid format-3 workspace and refuses legacy formats.
 
-- planning is read-only; mutation requires `--apply`;
-- every applied migration appends `logs/migrations.jsonl`;
-- migration writes use atomic replacement;
-- a workspace newer than the runtime is rejected;
-- raw evidence, claims, and citations are never silently rewritten;
-- legacy `AGENT.md` is preserved for manual review while `AGENTS.md` becomes authoritative;
-- format 2 adds the persistent topic-expert coordinator, bounded `context.md`, canonical Research Design, and Critic-validated lessons;
-- back up or export a workspace before a future destructive migration.
-
-Missing version markers are assumed to be version 1 because existing public legacy workspaces use the version-1 Claim/Evidence structure. Migration to version 2 preserves those records and creates the new coordination/context files around them.
+This policy avoids expensive, ambiguous conversion of old Claims, Evidence, run state, and coordinator semantics. Preserve any old directory separately if historical records are needed; do not copy its mutable state into the new workspace automatically.
