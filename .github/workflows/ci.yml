@@ -58,7 +58,31 @@ jobs:
           cache: pip
       - name: Install test runner
         run: python -m pip install --upgrade pip pytest
-      - name: Release checks
-        run: python .agents/skills/deep-research/scripts/releasectl.py release-check --strict
-      - name: End-to-end smoke test
-        run: python scripts/smoke_test.py
+      - name: Release validation
+        shell: bash
+        run: |
+          set +e
+          python .agents/skills/deep-research/scripts/releasectl.py release-check --strict 2>&1 | tee release-check-output.txt
+          release_status=${PIPESTATUS[0]}
+          python scripts/smoke_test.py 2>&1 | tee smoke-output.txt
+          smoke_status=${PIPESTATUS[0]}
+          test "$release_status" -eq 0 -a "$smoke_status" -eq 0
+      - name: Report release failure
+        if: ${{ failure() && github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          {
+            echo '### Temporary release-smoke diagnostics'
+            echo
+            echo '**Release check**'
+            echo '```text'
+            tail -n 100 release-check-output.txt
+            echo '```'
+            echo '**Smoke test**'
+            echo '```text'
+            tail -n 140 smoke-output.txt
+            echo '```'
+          } > ci-comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file ci-comment.md
