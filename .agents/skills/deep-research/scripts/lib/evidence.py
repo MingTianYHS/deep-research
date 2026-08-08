@@ -63,9 +63,16 @@ def _resume_pending(topic_root: Path, pending_path: Path, result: dict[str, Any]
     if pending.get("input_sha256") != _result_digest(result): raise ValueError(f"pending worker transaction differs from retry: {result.get('worker_result_id')}")
     accepted_cards = pending.get("accepted_cards", [])
     if not isinstance(accepted_cards, list) or len(accepted_cards) > max_new: raise ValueError("pending worker transaction exceeds current Evidence budget")
-    _append_missing(topic_root / "logs/source_attempts.jsonl", pending.get("source_attempts", [])); _append_missing(topic_root / "evidence/cards.jsonl", accepted_cards)
+    _append_missing(topic_root / "logs/source_attempts.jsonl", pending.get("source_attempts", [])); _append_missing(topic_root / "evidence/cards.jsonl", accepted_cards); _append_missing(topic_root / "evidence/verifications.jsonl", pending.get("verifications", []))
     worker_path = topic_root / "logs/workers" / f"{result['worker_result_id']}.json"; atomic_write_json(worker_path, pending["logged"]); pending_path.unlink(missing_ok=True)
     outcome = dict(pending["outcome"]); outcome["recovered_transaction"] = True; return outcome
+
+
+def _verification(worker_id: str, existing: dict[str, Any], refreshed: dict[str, Any], attempt: dict[str, Any], prior_attempts: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    if attempt.get("status") != "accepted" or not attempt.get("content_sha256"): return None
+    original = prior_attempts.get(str(existing.get("source_attempt_id")), {}); old_hash = original.get("content_sha256"); new_hash = attempt.get("content_sha256")
+    digest = hashlib.sha256(f"{worker_id}\n{existing.get('id')}\n{attempt.get('id')}".encode()).hexdigest()[:16]
+    return {"id": f"ver-{digest}", "evidence_id": str(existing["id"]), "source_attempt_id": str(attempt["id"]), "verified_at": attempt.get("attempted_at") or utc_now(), "content_sha256": new_hash, "status": "unchanged" if old_hash and old_hash == new_hash else "revalidated", "statement_sha256": hashlib.sha256(str(refreshed.get("statement") or "").encode()).hexdigest()}
 
 
 def ingest_worker_result(cards_path: Path, result: dict[str, Any], max_new: int) -> dict[str, Any]:
@@ -78,23 +85,30 @@ def ingest_worker_result(cards_path: Path, result: dict[str, Any], max_new: int)
     if not validation["valid"]: raise ValueError("invalid worker result: " + "; ".join(validation["errors"]))
     _validate_ingest_integrity(result)
     if pending_exists: return _resume_pending(topic_root, pending_path, result, max_new)
-    question_id = str(result["question_id"]); cards = result["evidence_cards"]; existing_ids, existing_keys = set(), set()
-    existing_cards: dict[str, dict[str, Any]] = {}
+    question_id = str(result["question_id"]); cards = result["evidence_cards"]; existing_ids: set[Any] = set(); existing_keys: set[str] = set(); existing_by_key: dict[str, dict[str, Any]] = {}
     for _, card in iter_jsonl(cards_path):
-        existing_ids.add(card.get("id")); existing_keys.add(evidence_key(card))
-        if card.get("id"): existing_cards[str(card["id"])] = card
-    reused_ids = list(dict.fromkeys(map(str, result.get("reused_evidence_ids", []))))
-    accepted, duplicate_ids = [], []
+        existing_ids.add(card.get("id")); key = evidence_key(card); existing_keys.add(key); existing_by_key[key] = card
+    stored_attempts = {str(item.get("id")): item for _, item in iter_jsonl(topic_root / "logs/source_attempts.jsonl") if item.get("id")}
+    source_attempts = deepcopy(result["source_attempts"])
+    for attempt in source_attempts:
+        if isinstance(attempt, dict): attempt.setdefault("attempted_at", utc_now())
+    attempts = {str(item.get("id")): item for item in source_attempts if isinstance(item, dict) and item.get("id")}
+    reused_ids = list(dict.fromkeys(map(str, result.get("reused_evidence_ids", [])))); accepted: list[dict[str, Any]] = []; duplicate_ids: list[str] = []; verified_ids: list[str] = []; verifications: list[dict[str, Any]] = []
     for raw in cards:
         card = normalize_card(raw, question_id); key = evidence_key(card)
-        if card["id"] in existing_ids or key in existing_keys: duplicate_ids.append(card["id"]); continue
-        existing_ids.add(card["id"]); existing_keys.add(key); accepted.append(card)
+        if card["id"] in existing_ids or key in existing_keys:
+            existing = existing_by_key.get(key); duplicate_ids.append(str(existing.get("id") if existing else card["id"]))
+            if existing:
+                event = _verification(str(worker_id), existing, card, attempts.get(str(card.get("source_attempt_id")), {}), stored_attempts)
+                if event: verifications.append(event); verified_ids.append(str(existing["id"]))
+            continue
+        existing_ids.add(card["id"]); existing_keys.add(key); existing_by_key[key] = card; accepted.append(card)
     if len(accepted) > max_new: raise ValueError(f"worker result adds {len(accepted)} cards but budget allows {max_new}")
-    accepted_ids = [card["id"] for card in accepted] + reused_ids
-    worker_path = topic_root / "logs/workers" / f"{result['worker_result_id']}.json"; logged = deepcopy(result); logged["ingest_summary"] = {"accepted_evidence_ids": accepted_ids, "new_evidence_ids": [card["id"] for card in accepted], "reused_evidence_ids": reused_ids, "accepted_count": len(accepted), "reused_count": len(reused_ids), "duplicate_evidence_ids": duplicate_ids, "duplicate_count": len(duplicate_ids)}
-    outcome = {"accepted": len(accepted), "accepted_ids": accepted_ids, "new_ids": [card["id"] for card in accepted], "reused": len(reused_ids), "reused_ids": reused_ids, "duplicates": len(duplicate_ids), "duplicate_ids": duplicate_ids, "worker_validation": validation, "ingest_context_validation": context_validation, "worker_result_log": str(worker_path)}
-    atomic_write_json(pending_path, {"input_sha256": _result_digest(result), "source_attempts": result["source_attempts"], "accepted_cards": accepted, "logged": logged, "outcome": outcome})
-    _append_missing(topic_root / "logs/source_attempts.jsonl", result["source_attempts"]); _append_missing(cards_path, accepted); atomic_write_json(worker_path, logged); pending_path.unlink(missing_ok=True); return outcome
+    accepted_ids = list(dict.fromkeys([card["id"] for card in accepted] + reused_ids + verified_ids))
+    worker_path = topic_root / "logs/workers" / f"{result['worker_result_id']}.json"; logged = deepcopy(result); logged["ingest_summary"] = {"accepted_evidence_ids": accepted_ids, "new_evidence_ids": [card["id"] for card in accepted], "reused_evidence_ids": reused_ids, "verified_evidence_ids": verified_ids, "accepted_count": len(accepted), "reused_count": len(reused_ids), "verified_count": len(verified_ids), "duplicate_evidence_ids": duplicate_ids, "duplicate_count": len(duplicate_ids)}
+    outcome = {"accepted": len(accepted), "accepted_ids": accepted_ids, "new_ids": [card["id"] for card in accepted], "reused": len(reused_ids), "reused_ids": reused_ids, "verified": len(verified_ids), "verified_ids": verified_ids, "duplicates": len(duplicate_ids), "duplicate_ids": duplicate_ids, "worker_validation": validation, "ingest_context_validation": context_validation, "worker_result_log": str(worker_path)}
+    atomic_write_json(pending_path, {"input_sha256": _result_digest(result), "source_attempts": source_attempts, "accepted_cards": accepted, "verifications": verifications, "logged": logged, "outcome": outcome})
+    _append_missing(topic_root / "logs/source_attempts.jsonl", source_attempts); _append_missing(cards_path, accepted); _append_missing(topic_root / "evidence/verifications.jsonl", verifications); atomic_write_json(worker_path, logged); pending_path.unlink(missing_ok=True); return outcome
 
 
 def _validate_ingest_integrity(result: dict[str, Any]) -> None:
