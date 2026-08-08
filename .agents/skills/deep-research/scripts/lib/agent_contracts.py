@@ -29,7 +29,7 @@ def _dependency_results(root: Path, dependencies: list[str], run_id: str) -> lis
 
 
 def build_researcher_assignment(root: Path, run_id: str, question: dict[str, Any], budgets_file: Path, remediation: dict[str, Any] | None = None) -> dict[str, Any]:
-    question_id = str(question.get("id")); brief = build_brief(root, question_id); reuse_plan = build_reuse_plan(root, question_id)
+    question_id = str(question.get("id")); brief = build_brief(root, question_id); reuse_plan = build_reuse_plan(root, question_id, str(question.get("question") or ""))
     profile = str(question.get("worker_budget_profile") or brief.get("budget_profile") or "standard")
     limits = profile_limits(profile, budgets_file); dependencies = [str(item) for item in question.get("dependencies", [])]
     known_urls = list(dict.fromkeys([str(item) for item in brief.get("known_urls", [])] + [str(item.get("url")) for item in reuse_plan["known_sources"] if item.get("url")]))
@@ -119,7 +119,6 @@ def validate_synthesis_result(root: Path, value: dict[str, Any], active_run_id: 
         try: Path(report_path).expanduser().resolve().relative_to((root / "reports").resolve())
         except (OSError, ValueError): errors.append("synthesis report_path must stay inside topic reports")
     if value.get("output_language") != _topic_language(root): errors.append("synthesis output_language does not match topic language")
-
     review_id = value.get("critic_review_id"); review: dict[str, Any] | None = None
     if not isinstance(review_id, str) or not review_id: errors.append("synthesis critic_review_id is required")
     else:
@@ -144,8 +143,6 @@ def validate_synthesis_result(root: Path, value: dict[str, Any], active_run_id: 
     if not used_evidence <= allowed_evidence: errors.append("synthesis used Evidence outside the reviewed snapshot")
     if not cited_evidence <= allowed_evidence: errors.append("synthesis report cites Evidence outside the reviewed snapshot")
     if not cited_evidence <= used_evidence: errors.append("synthesis report citations must be declared in evidence_ids_used")
-    errors += validate_knowledge_delta(value.get("knowledge_delta"))
-    errors += validate_next_research(value.get("next_research"), allowed_evidence)
-    if value.get("status") == "complete" and (not used_claims or not used_evidence or not cited_evidence or value.get("unresolved")):
-        errors.append("complete synthesis requires Claims, Evidence citations, and no unresolved items")
+    errors += validate_knowledge_delta(value.get("knowledge_delta")); errors += validate_next_research(value.get("next_research"), allowed_evidence)
+    if value.get("status") == "complete" and (not used_claims or not used_evidence or not cited_evidence or value.get("unresolved")): errors.append("complete synthesis requires Claims, Evidence citations, and no unresolved items")
     return {"valid": not errors, "errors": sorted(set(errors)), "current_snapshot": current}
