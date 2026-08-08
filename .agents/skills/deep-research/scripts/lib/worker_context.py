@@ -7,6 +7,7 @@ from typing import Any
 
 from .io_utils import iter_jsonl, read_json
 from .migrations import CURRENT_WORKSPACE_FORMAT
+from .research_memory import evidence_freshness, latest_verifications
 
 WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 REPEAT_REASONS = {"stale_refresh", "scope_changed", "version_changed", "critic_remediation", "previous_low_yield"}
@@ -71,13 +72,19 @@ def validate_ingest_context(topic_root: Path, result: dict[str, Any], *, allow_e
             if result.get("overlap_key") != question.get("overlap_key"): errors.append("worker overlap_key does not match the current Research Design")
             if result.get("budget_profile") != question.get("worker_budget_profile", topic_profile): errors.append("worker budget_profile does not match the assigned question")
             if question.get("version_sensitive") and not _version_anchor_matches(result, question): errors.append("version-sensitive question requires a matching version_check query anchor")
-    evidence = {str(item.get("id")): item for _, item in iter_jsonl(topic_root / "evidence/cards.jsonl") if item.get("id")}; reused = result.get("reused_evidence_ids", []); rationale = result.get("reuse_rationale", {})
+    evidence = {str(item.get("id")): item for _, item in iter_jsonl(topic_root / "evidence/cards.jsonl") if item.get("id")}; reused = result.get("reused_evidence_ids", []); rationale = result.get("reuse_rationale", {}); verifications = latest_verifications(topic_root); reuse_freshness: dict[str, str] = {}
     if isinstance(reused, list):
         for evidence_id in reused:
             card = evidence.get(str(evidence_id))
             if not card: errors.append(f"reused Evidence does not exist: {evidence_id}")
             elif card.get("prompt_injection_risk") == "high": errors.append(f"high-risk Evidence cannot be reused: {evidence_id}")
-            elif card.get("question_id") != question_id and (not isinstance(rationale, dict) or not str(rationale.get(str(evidence_id)) or "").strip()): errors.append(f"cross-question reused Evidence requires reuse_rationale: {evidence_id}")
+            else:
+                reuse_freshness[str(evidence_id)] = evidence_freshness(topic_root, card, verifications=verifications)
+                if card.get("question_id") != question_id and (not isinstance(rationale, dict) or not str(rationale.get(str(evidence_id)) or "").strip()): errors.append(f"cross-question reused Evidence requires reuse_rationale: {evidence_id}")
+    reuse_only = bool(reused) and not result.get("queries_run") and not result.get("source_attempts") and not result.get("evidence_cards")
+    if result.get("status") == "complete" and reuse_only:
+        stale = sorted(evidence_id for evidence_id, freshness in reuse_freshness.items() if freshness != "fresh")
+        if stale: errors.append(f"reuse-only completion requires fresh Evidence; refresh known URLs for {stale}")
     persisted = _persisted_query_keys(topic_root, str(worker_result_id) if isinstance(worker_result_id, str) else None)
     for index, query in enumerate(result.get("queries_run", []) if isinstance(result.get("queries_run"), list) else [], 1):
         if not isinstance(query, dict): continue
@@ -92,4 +99,4 @@ def validate_ingest_context(topic_root: Path, result: dict[str, Any], *, allow_e
             except (OSError, json.JSONDecodeError): existing = {}
             if existing.get("worker_result_id") == worker_result_id: errors.append(f"worker_result_id already ingested: {worker_result_id}")
             else: errors.append(f"worker result log path already exists: {worker_result_id}")
-    return {"valid": not errors, "errors": sorted(set(errors)), "active_run_id": active_run_id, "topic_budget_profile": topic_profile, "question_id": result.get("question_id"), "worker_result_id": worker_result_id}
+    return {"valid": not errors, "errors": sorted(set(errors)), "active_run_id": active_run_id, "topic_budget_profile": topic_profile, "question_id": result.get("question_id"), "worker_result_id": worker_result_id, "reuse_freshness": reuse_freshness}
