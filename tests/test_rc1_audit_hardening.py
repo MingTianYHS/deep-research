@@ -85,6 +85,8 @@ def test_ingest_rejects_conflicting_source_attempt_id(tmp_path):
     state_path.write_text(json.dumps(state))
     conflicting = worker_result()
     conflicting.update(worker_result_id="worker-2", run_id="run-2")
+    for query in conflicting["queries_run"]:
+        query["repeat_reason"] = "scope_changed"
     conflicting["source_attempts"][0].update(url="https://example.com/b", normalized_url="https://example.com/b", content_sha256="b" * 64)
     conflicting["evidence_cards"][0]["source"]["url"] = "https://example.com/b"
     conflicting["evidence_cards"][0]["statement"] = "Different fact"
