@@ -33,6 +33,16 @@ All notable changes to this project are documented here.
 - Long-lived topics no longer exhaust all future Run budgets through cumulative usage.
 - Incremental mode, last-Run time, priority Claims, prior Queries, and known sources now reach the Researcher.
 
+### RC1 hardening - 2026-08-09
+
+- Upgrade Researcher and Critic assignments to compact v2 contracts and cap non-Deep Worker dispatch.
+- Bind reviews, synthesis, and audits to the latest valid Evidence Verification lineage.
+- Reject conflicting Source Attempt and Evidence IDs instead of silently accepting divergent records.
+- Require every assigned question before complete and bound Worker, knowledge-delta, and backlog text payloads.
+- Restrict Lite/Standard review to one full review plus at most one search-free targeted recheck.
+- Add a cross-platform user-level installer, post-install Doctor, installation Smoke, and Python syntax checks.
+- Align Format 3, explicit `continue`, and no-legacy-migration documentation with runtime behavior.
+
 ## 0.9.0rc3 - 2026-08-07
 
 - Streamlined lite/standard runtime, compact Worker Result v2, run-level disconfirmation, six-section reports, hard-gate scoring, pseudo-Token budget removal, and CI/maintenance-surface reduction.

@@ -20,7 +20,7 @@ def test_accepted_source_can_be_explicitly_refreshed(tmp_path):
 
 
 def test_known_url_refresh_does_not_trigger_discovery_disconfirmation():
-    assignment = {"reuse_plan": {"recommended_action": "refresh_known_sources_before_search"}}
+    assignment = {"research_context": {"recommended_action": "refresh_known_sources_before_search"}}
     assert _needs_new_search(assignment) is False
-    assignment["reuse_plan"]["recommended_action"] = "targeted_discovery"
+    assignment["research_context"]["recommended_action"] = "targeted_discovery"
     assert _needs_new_search(assignment) is True

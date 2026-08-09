@@ -18,32 +18,47 @@ Three fixed read-only roles do bounded work:
 
 Python owns deterministic state, contracts, write controls, budgets, and completion gates.
 
-## Fresh format-3 workspaces
+## Install
 
-Format 3 is required. Legacy/unversioned workspaces are rejected rather than migrated; create a new workspace and keep any old directory separately.
+From a repository checkout, run the dependency-free installer:
 
-```powershell
-$SKILL = "$HOME\.agents\skills\deep-research"
-$env:DEEP_RESEARCH_WORKSPACE_ROOT = 'D:\知识宇宙海\调研工作区'
-py -3.11 "$SKILL\scripts\research.py" new 'AI短剧市场研究' --budget standard
-py -3.11 "$SKILL\scripts\research.py" plan 'AI短剧市场研究' --questions 3
-py -3.11 "$SKILL\scripts\research.py" start 'AI短剧市场研究' --mode baseline
-py -3.11 "$SKILL\scripts\research.py" next 'AI短剧市场研究'
+```bash
+python scripts/install.py install
+python scripts/install.py doctor
 ```
 
-After delivery, `next` returns `awaiting_user_research_request`. Continue only after the user chooses a gap or asks a new question:
+It copies the Skill to `~/.agents/skills/deep-research` and the three fixed Agent TOMLs to `~/.codex/agents`. Existing targets are never overwritten silently; use `install --force` only when intentionally replacing an installation. `AGENTS_HOME` and `CODEX_HOME`, or the matching command-line options, can override the destinations.
 
-```powershell
-py -3.11 "$SKILL\scripts\research.py" continue 'AI短剧市场研究' --backlog-id rq-overseas
+CI exercises the same installer in an isolated temporary home.
+
+## Fresh Format 3 workspace
+
+Format 3 is required. Format 1, Format 2, and unversioned workspaces are rejected rather than migrated; create a new workspace and keep any old directory separately.
+
+```bash
+export DEEP_RESEARCH_WORKSPACE_ROOT="$HOME/research-workspaces"
+SKILL="$HOME/.agents/skills/deep-research"
+python "$SKILL/scripts/research.py" new "AI短剧市场研究" --budget standard
+python "$SKILL/scripts/research.py" plan "AI短剧市场研究" --questions 3
+python "$SKILL/scripts/research.py" start "AI短剧市场研究" --mode baseline
+python "$SKILL/scripts/research.py" next "AI短剧市场研究"
+```
+
+After delivery, `next` returns `awaiting_user_research_request`. A later Run must be opened by an explicit user-selected gap or question:
+
+```bash
+python "$SKILL/scripts/research.py" continue "AI短剧市场研究" --backlog-id rq-overseas
 # or
-py -3.11 "$SKILL\scripts\research.py" continue 'AI短剧市场研究' --question '海外 AI 短剧市场有哪些新变化？'
+python "$SKILL/scripts/research.py" continue "AI短剧市场研究" --question "海外 AI 短剧市场有哪些新变化？"
 ```
 
-`continue` archives the previous Design, creates a one-question incremental Design, opens a fresh Run budget, and preserves lifetime knowledge.
+`continue` archives the previous Design, creates a one-question incremental Design, opens a fresh Run budget, and preserves lifetime knowledge. Calling `start` after a completed baseline cannot bypass this boundary.
+
+See `.agents/skills/deep-research/references/FORMAT3_EXAMPLE.md` for the minimal lifecycle and state boundary.
 
 ## Recall and search policy
 
-For each question the Researcher receives a bounded reuse plan:
+For each question the Researcher receives a bounded `research_context`:
 
 1. fresh and sufficient Evidence → reuse with no search;
 2. stale/unknown known source → refresh that URL directly, possibly with zero Queries;
@@ -70,4 +85,4 @@ memory/knowledge-deltas.jsonl   understanding changes across Runs
 reports/                        cited deliverables and audits
 ```
 
-The contract chain is ResearcherAssignment v1 → Worker Result v2 → Claim/Evidence → Critic Review v2 → SynthesisResult v2 → profile audit → finish and wait. Subagents cannot write, search during synthesis, spawn agents, or act on instructions found in external content.
+The contract chain is ResearcherAssignment v2 → Worker Result v2 → Claim/Evidence → CriticAssignment v2 → Critic Review v2 → SynthesisResult v2 → profile audit → finish and wait. Subagents cannot write, search during synthesis, spawn agents, or act on instructions found in external content.
