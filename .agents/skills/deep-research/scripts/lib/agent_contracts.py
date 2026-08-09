@@ -7,7 +7,7 @@ from typing import Any
 
 from .agent_snapshots import build_review_snapshot, canonical_sha256, snapshot_matches
 from .citations import CITATION_RE
-from .critic_reviews import approved_reviews_for_run, load_review
+from .critic_reviews import approved_reviews_for_run, load_review, review_contract_for_run
 from .io_utils import read_json
 from .research_memory import build_reuse_plan, validate_knowledge_delta, validate_next_research
 from .topic_context import build_brief
@@ -15,12 +15,14 @@ from .worker_contract import profile_limits
 
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 SYNTHESIS_STATUSES = {"complete", "partial", "blocked"}
+OBSERVABLE_BUDGET_KEYS = ("max_tool_calls", "max_search_queries", "max_source_pages", "max_same_url_attempts")
 
 
 def _dependency_results(root: Path, dependencies: list[str], run_id: str) -> list[dict[str, Any]]:
     values: list[dict[str, Any]] = []
     directory = root / "logs/workers"
-    if not directory.is_dir(): return values
+    if not directory.is_dir():
+        return values
     for path in sorted(directory.glob("*.json")):
         worker = read_json(path, {})
         if worker.get("run_id") == run_id and worker.get("question_id") in dependencies and worker.get("status") == "complete":
@@ -29,12 +31,23 @@ def _dependency_results(root: Path, dependencies: list[str], run_id: str) -> lis
 
 
 def build_researcher_assignment(root: Path, run_id: str, question: dict[str, Any], budgets_file: Path, remediation: dict[str, Any] | None = None) -> dict[str, Any]:
-    question_id = str(question.get("id")); brief = build_brief(root, question_id); reuse_plan = build_reuse_plan(root, question_id, str(question.get("question") or ""))
+    question_id = str(question.get("id"))
+    brief = build_brief(root, question_id)
+    reuse = build_reuse_plan(root, question_id, str(question.get("question") or ""))
     profile = str(question.get("worker_budget_profile") or brief.get("budget_profile") or "standard")
-    limits = profile_limits(profile, budgets_file); dependencies = [str(item) for item in question.get("dependencies", [])]
-    known_urls = list(dict.fromkeys([str(item) for item in brief.get("known_urls", [])] + [str(item.get("url")) for item in reuse_plan["known_sources"] if item.get("url")]))
+    limits = profile_limits(profile, budgets_file)
+    dependencies = [str(item) for item in question.get("dependencies", [])]
+    research_context = {
+        "mode": reuse["research_mode"],
+        "since": reuse["since"],
+        "recommended_action": reuse["recommended_action"],
+        "existing_evidence": reuse["existing_evidence"],
+        "relevant_claims": reuse["relevant_claims"],
+        "known_sources": reuse["known_sources"],
+        "prior_queries": reuse["prior_queries"],
+    }
     return {
-        "assignment_version": 1,
+        "assignment_version": 2,
         "agent": "topic_researcher",
         "search_policy_version": 2,
         "run_id": run_id,
@@ -51,36 +64,44 @@ def build_researcher_assignment(root: Path, run_id: str, question: dict[str, Any
         "acceptance_criteria": question.get("acceptance_criteria", []),
         "disconfirming_query": question.get("disconfirming_query"),
         "alternative_explanations": question.get("alternative_explanations", []),
-        "research_mode": reuse_plan["research_mode"],
-        "since": reuse_plan["since"],
-        "priority_claim_ids": [item.get("id") for item in reuse_plan["relevant_claims"] if item.get("id")],
-        "reuse_plan": reuse_plan,
-        "known_urls": known_urls[:24],
+        "research_context": research_context,
         "version_sensitive": bool(question.get("version_sensitive")),
         "target_version": question.get("target_version"),
         "target_commit": question.get("target_commit"),
         "allow_main_branch_fallback": bool(question.get("allow_main_branch_fallback", False)),
         "budget_profile": profile,
-        "budget": limits,
+        "budget": {key: limits[key] for key in OBSERVABLE_BUDGET_KEYS},
         "remediation": remediation,
-        "inheritance_notice": "Do not assume the parent Skill prompt is inherited. Follow the named agent instructions and this explicit assignment contract.",
     }
 
 
 def build_critic_assignment(root: Path, run_id: str, previous_review_id: str | None = None) -> dict[str, Any]:
-    return {"assignment_version": 1, "agent": "research_critic", "run_id": run_id, "review_snapshot": build_review_snapshot(root, run_id), "previous_review_id": previous_review_id, "inheritance_notice": "Review only the supplied snapshot. Do not assume parent Skill context or silently inspect a different workspace state."}
+    contract = review_contract_for_run(root, run_id)
+    if previous_review_id is not None and contract.get("previous_review_id") != previous_review_id:
+        raise ValueError("Critic previous_review_id is not the latest persisted review")
+    return {
+        "assignment_version": 2,
+        "result_contract_version": 2,
+        "agent": "research_critic",
+        "run_id": run_id,
+        "review_snapshot": build_review_snapshot(root, run_id),
+        **contract,
+    }
 
 
 def _topic_language(root: Path) -> str:
     try:
-        with (root / "topic.toml").open("rb") as handle: return str(tomllib.load(handle).get("language") or "zh-CN")
-    except (OSError, tomllib.TOMLDecodeError): return "zh-CN"
+        with (root / "topic.toml").open("rb") as handle:
+            return str(tomllib.load(handle).get("language") or "zh-CN")
+    except (OSError, tomllib.TOMLDecodeError):
+        return "zh-CN"
 
 
 def build_synthesis_assignment(root: Path, run_id: str, report_path: Path, review: dict[str, Any] | None = None) -> dict[str, Any]:
     if review is None:
         reviews = approved_reviews_for_run(root, run_id)
-        if not reviews: raise ValueError("synthesis requires a current approved Critic Review")
+        if not reviews:
+            raise ValueError("synthesis requires a current approved Critic Review")
         review = reviews[-1]
     review_snapshot = build_review_snapshot(root, run_id)
     synthesis_snapshot = {**review_snapshot, "critic_review_id": review["id"], "critic_review_sha256": canonical_sha256(review)}
@@ -104,45 +125,74 @@ def build_synthesis_assignment(root: Path, run_id: str, report_path: Path, revie
 
 def validate_synthesis_result(root: Path, value: dict[str, Any], active_run_id: str) -> dict[str, Any]:
     errors: list[str] = []
-    if value.get("synthesis_result_version") != 2: errors.append("synthesis_result_version must be 2")
+    if value.get("synthesis_result_version") != 2:
+        errors.append("synthesis_result_version must be 2")
     synthesis_id = value.get("id")
-    if not isinstance(synthesis_id, str) or not SAFE_ID.fullmatch(synthesis_id): errors.append("synthesis id must be a safe non-empty string")
-    if value.get("run_id") != active_run_id: errors.append("synthesis run_id does not match active run")
-    if value.get("status") not in SYNTHESIS_STATUSES: errors.append("invalid synthesis status")
+    if not isinstance(synthesis_id, str) or not SAFE_ID.fullmatch(synthesis_id):
+        errors.append("synthesis id must be a safe non-empty string")
+    if value.get("run_id") != active_run_id:
+        errors.append("synthesis run_id does not match active run")
+    if value.get("status") not in SYNTHESIS_STATUSES:
+        errors.append("invalid synthesis status")
     for key in ("claim_ids_used", "evidence_ids_used", "unresolved"):
-        if not isinstance(value.get(key), list): errors.append(f"synthesis {key} must be a list")
+        if not isinstance(value.get(key), list):
+            errors.append(f"synthesis {key} must be a list")
     report_markdown = value.get("report_markdown")
-    if not isinstance(report_markdown, str) or not report_markdown.strip(): errors.append("synthesis report_markdown must be non-empty"); report_markdown = ""
+    if not isinstance(report_markdown, str) or not report_markdown.strip():
+        errors.append("synthesis report_markdown must be non-empty")
+        report_markdown = ""
     report_path = value.get("report_path")
-    if not isinstance(report_path, str) or not report_path.strip(): errors.append("synthesis report_path must be non-empty")
+    if not isinstance(report_path, str) or not report_path.strip():
+        errors.append("synthesis report_path must be non-empty")
     else:
-        try: Path(report_path).expanduser().resolve().relative_to((root / "reports").resolve())
-        except (OSError, ValueError): errors.append("synthesis report_path must stay inside topic reports")
-    if value.get("output_language") != _topic_language(root): errors.append("synthesis output_language does not match topic language")
-    review_id = value.get("critic_review_id"); review: dict[str, Any] | None = None
-    if not isinstance(review_id, str) or not review_id: errors.append("synthesis critic_review_id is required")
+        try:
+            Path(report_path).expanduser().resolve().relative_to((root / "reports").resolve())
+        except (OSError, ValueError):
+            errors.append("synthesis report_path must stay inside topic reports")
+    if value.get("output_language") != _topic_language(root):
+        errors.append("synthesis output_language does not match topic language")
+    review_id = value.get("critic_review_id")
+    review: dict[str, Any] | None = None
+    if not isinstance(review_id, str) or not review_id:
+        errors.append("synthesis critic_review_id is required")
     else:
-        try: review = load_review(root, review_id)
-        except ValueError as exc: errors.append(str(exc))
-    current = build_review_snapshot(root, active_run_id); expected_snapshot: dict[str, Any] | None = None
+        try:
+            review = load_review(root, review_id)
+        except ValueError as exc:
+            errors.append(str(exc))
+    current = build_review_snapshot(root, active_run_id)
+    expected_snapshot: dict[str, Any] | None = None
     if review is not None:
-        if review.get("run_id") != active_run_id: errors.append("synthesis Critic Review belongs to another run")
-        if review.get("status") not in {"approved", "approved_with_findings"}: errors.append("synthesis requires an approved Critic Review")
-        if not snapshot_matches(review.get("reviewed_snapshot"), current): errors.append("synthesis Critic Review is stale")
+        if review.get("run_id") != active_run_id:
+            errors.append("synthesis Critic Review belongs to another run")
+        if review.get("status") not in {"approved", "approved_with_findings"}:
+            errors.append("synthesis requires an approved Critic Review")
+        if not snapshot_matches(review.get("reviewed_snapshot"), current):
+            errors.append("synthesis Critic Review is stale")
         expected_snapshot = {**current, "critic_review_id": review_id, "critic_review_sha256": canonical_sha256(review)}
     supplied = value.get("input_snapshot")
-    if expected_snapshot is not None and not snapshot_matches(supplied, expected_snapshot): errors.append("synthesis input snapshot does not match current reviewed state")
+    if expected_snapshot is not None and not snapshot_matches(supplied, expected_snapshot):
+        errors.append("synthesis input snapshot does not match current reviewed state")
     if expected_snapshot is not None:
-        if not isinstance(supplied, dict) or supplied.get("critic_review_sha256") != expected_snapshot.get("critic_review_sha256"): errors.append("synthesis critic review snapshot hash does not match")
-        if not isinstance(supplied, dict) or supplied.get("critic_review_id") != review_id: errors.append("synthesis critic_review_id snapshot does not match")
-    allowed_claims = set(current["claim_ids"]); allowed_evidence = set(current["evidence_ids"])
+        if not isinstance(supplied, dict) or supplied.get("critic_review_sha256") != expected_snapshot.get("critic_review_sha256"):
+            errors.append("synthesis critic review snapshot hash does not match")
+        if not isinstance(supplied, dict) or supplied.get("critic_review_id") != review_id:
+            errors.append("synthesis critic_review_id snapshot does not match")
+    allowed_claims = set(current["claim_ids"])
+    allowed_evidence = set(current["evidence_ids"])
     used_claims = set(value.get("claim_ids_used", [])) if isinstance(value.get("claim_ids_used"), list) else set()
     used_evidence = set(value.get("evidence_ids_used", [])) if isinstance(value.get("evidence_ids_used"), list) else set()
     cited_evidence = set(CITATION_RE.findall(report_markdown))
-    if not used_claims <= allowed_claims: errors.append("synthesis used Claims outside the reviewed snapshot")
-    if not used_evidence <= allowed_evidence: errors.append("synthesis used Evidence outside the reviewed snapshot")
-    if not cited_evidence <= allowed_evidence: errors.append("synthesis report cites Evidence outside the reviewed snapshot")
-    if not cited_evidence <= used_evidence: errors.append("synthesis report citations must be declared in evidence_ids_used")
-    errors += validate_knowledge_delta(value.get("knowledge_delta")); errors += validate_next_research(value.get("next_research"), allowed_evidence)
-    if value.get("status") == "complete" and (not used_claims or not used_evidence or not cited_evidence or value.get("unresolved")): errors.append("complete synthesis requires Claims, Evidence citations, and no unresolved items")
+    if not used_claims <= allowed_claims:
+        errors.append("synthesis used Claims outside the reviewed snapshot")
+    if not used_evidence <= allowed_evidence:
+        errors.append("synthesis used Evidence outside the reviewed snapshot")
+    if not cited_evidence <= allowed_evidence:
+        errors.append("synthesis report cites Evidence outside the reviewed snapshot")
+    if not cited_evidence <= used_evidence:
+        errors.append("synthesis report citations must be declared in evidence_ids_used")
+    errors += validate_knowledge_delta(value.get("knowledge_delta"))
+    errors += validate_next_research(value.get("next_research"), allowed_evidence)
+    if value.get("status") == "complete" and (not used_claims or not used_evidence or not cited_evidence or value.get("unresolved")):
+        errors.append("complete synthesis requires Claims, Evidence citations, and no unresolved items")
     return {"valid": not errors, "errors": sorted(set(errors)), "current_snapshot": current}
